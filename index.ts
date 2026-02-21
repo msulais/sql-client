@@ -7,12 +7,12 @@ export enum DataTypes {
 	Datetime,
 }
 
-type ColumnName = string
-type TableName = string
-type StringId = number
-type ColumnIndex = number
-type Schema = Record<ColumnName, number | string | Date | null>
-type ColumnProperties<T extends Record<ColumnName, any>> = ({ name: keyof T } & (
+export type ColumnName = string
+export type TableName = string
+export type StringId = number
+export type ColumnIndex = number
+export type Schema = Record<ColumnName, number | string | Date | null>
+export type ColumnProperties<T extends Record<ColumnName, any>> = ({ name: keyof T } & (
 	{ type: DataTypes.String | DataTypes.Datetime }
 	| { type: DataTypes.Number, autoIncrease?: boolean }
 ))
