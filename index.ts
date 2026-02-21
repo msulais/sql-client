@@ -9,13 +9,22 @@ export enum DataTypes {
 
 type StringId = number
 type ColumnIndex = number
-type Nullable<T> = {
+
+/** Make all properties in T nullable */
+export type Nullable<T> = {
     [P in keyof T]: T[P] | null
 }
 
-type ColumnName = string
-type TableName = string
+/** Column name (string) */
+export type ColumnName = string
+
+/** Table name (string) */
+export type TableName = string
+
+/** Tabel schema */
 export type Schema = Record<ColumnName, number | string | Date | null>
+
+/** Column properties */
 export type ColumnProperties<T extends Record<ColumnName, any>> = ({ name: keyof T } & (
 	{ type: DataTypes.String | DataTypes.Datetime }
 	| { type: DataTypes.Number, autoIncrease?: boolean }
@@ -148,7 +157,7 @@ export class SQLTable<T extends Schema = any> {
      * Connects other tables to this table to enable JOIN operations.
      * @param tables - An array of table instances to connect.
      */
-	connectTables(tables: SQLTable[]): void {
+	connect(tables: SQLTable[]): void {
 		for (const table of tables) {
 			const name = table.name
 			if (name === this.#name) {
@@ -173,13 +182,13 @@ export class SQLTable<T extends Schema = any> {
      */
 	query<JoinedTable extends Schema = any>(options?: {
 		limit?: number
-		where?: (row: T) => boolean
+		where?: (row: Nullable<T>) => boolean
 		orderBy?: ColumnName
 		orderMode?: 'ASC' | 'DESC'
 		join?: {
 			table: TableName
 			columns?: (keyof JoinedTable)[]
-			on: (currentTableValue: T, joinTableValue: JoinedTable) => boolean
+			on: (currentTableValue: Nullable<T>, joinTableValue: Nullable<JoinedTable>) => boolean
 		}[]
 		columns?: {
 			name: ColumnName,
@@ -659,7 +668,7 @@ export class SQLDatabase {
 		this.#name = name
 		for (const table of tables) {
 			this.#tables.set(table.name, table)
-			table.connectTables(tables)
+			table.connect(tables)
 		}
 	}
 
