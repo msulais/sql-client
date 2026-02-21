@@ -1,0 +1,30 @@
+{
+  "name": "sql-client",
+  "description": "A lightning-fast, zero-dependency, in-memory SQL database for the client.",
+  "module": "index.ts",
+  "type": "module",
+  "license": "MIT",
+  "version": "0.1.0",
+  "author": "Muhammad Sulais",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "keywords": [
+    "sql",
+    "database",
+    "in-memory",
+    "client-side",
+    "browser-db",
+    "wasm-alternative"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "vitest": "^4.0.18"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
