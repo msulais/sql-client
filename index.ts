@@ -1,3 +1,6 @@
+/**
+ * Defines the supported data types for table columns.
+ */
 export enum DataTypes {
 	Number,
 	String,
@@ -53,6 +56,10 @@ function deleteString(stringId: StringId): void {
 	SHARED_STRING_ID.delete(str[0])
 }
 
+/**
+ * Represents an in-memory SQL-like table that stores data efficiently.
+ * @template T - The schema type of the table.
+ */
 export class SQLTable<T extends Schema = Record<string, any>> {
 	#name: TableName
 	#sharedTables = new Map<SQLTable['name'], SQLTable>()
@@ -86,10 +93,12 @@ export class SQLTable<T extends Schema = Record<string, any>> {
 		}
 	}
 
+	/** Gets the name of the table. */
 	get name(): string {
 		return this.#name
 	}
 
+	/** Gets an array of column names in the table. */
 	get columns(): string[] {
 		const cols: (keyof T)[] = []
 		for (const [col, i] of this.#columnIndexes) {
@@ -99,6 +108,7 @@ export class SQLTable<T extends Schema = Record<string, any>> {
 		return cols.filter(v => typeof v === "string")
 	}
 
+	/** Gets the total number of rows currently stored in the table. */
 	get rowCount(): number {
         return this.#rows.length
     }
@@ -627,9 +637,17 @@ export class SQLTable<T extends Schema = Record<string, any>> {
 	}
 }
 
+/**
+ * Represents a collection of connected SQLTables.
+ */
 export class SQLDatabase {
 	#tables = new Map<SQLTable['name'], SQLTable>()
 	#name: string
+
+	/**
+     * Creates a new SQLDatabase instance and links the provided tables together.
+     * @param tables - The table instances to include in the database.
+     */
 	constructor(name: string, ...tables: SQLTable[]) {
 		this.#name = name
 		for (const table of tables) {
@@ -638,14 +656,27 @@ export class SQLDatabase {
 		}
 	}
 
+	/**
+	 * Get database name
+	 */
 	get name(): string {
 		return this.#name
 	}
 
+	/**
+	 * Gets an array of all table names registered in the database.
+     * @returns {string[]}
+     */
 	get tableNames(): string[] {
         return Array.from(this.#tables.keys())
     }
 
+	/**
+     * Retrieves a table instance by its name.
+     * @template T - The schema type of the requested table.
+     * @param name - The name of the table to retrieve.
+     * @returns The requested table, or undefined if not found.
+     */
     getTable<T extends Schema = any>(name: string): SQLTable<T> | undefined {
         return this.#tables.get(name) as SQLTable<T> | undefined
     }
