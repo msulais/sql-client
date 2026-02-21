@@ -1,4 +1,4 @@
-import { DataTypes, SQLDatabase, SQLTable } from '../src/index'
+import { DataTypes, SQLDatabase, SQLTable } from '../index'
 import { describe, beforeEach, it, expect } from 'vitest'
 
 describe('Custom In-Memory SQL Engine', () => {
@@ -19,7 +19,7 @@ describe('Custom In-Memory SQL Engine', () => {
             { name: 'title', type: DataTypes.String }
         ])
 
-        db = new SQLDatabase(usersTable, postsTable)
+        db = new SQLDatabase('', usersTable, postsTable)
     })
 
     describe('1. Introspection & Schema', () => {
@@ -214,7 +214,7 @@ describe('Custom In-Memory SQL Engine', () => {
                 { name: 'eventName', type: DataTypes.String },
                 { name: 'createdAt', type: DataTypes.Datetime }
             ])
-            db = new SQLDatabase(eventsTable) // Mount to DB
+            db = new SQLDatabase('', eventsTable) // Mount to DB
 
             eventsTable.insert([
                 { eventName: 'Old Event', createdAt: new Date('2020-05-15') },
