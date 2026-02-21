@@ -9,16 +9,12 @@ export enum DataTypes {
 
 type StringId = number
 type ColumnIndex = number
+type Nullable<T> = {
+    [P in keyof T]: T[P] | null
+}
 
-/**
- * Column name
- */
-export type ColumnName = string
-
-/**
- * Table name
- */
-export type TableName = string
+type ColumnName = string
+type TableName = string
 export type Schema = Record<ColumnName, number | string | Date | null>
 export type ColumnProperties<T extends Record<ColumnName, any>> = ({ name: keyof T } & (
 	{ type: DataTypes.String | DataTypes.Datetime }
@@ -189,8 +185,8 @@ export class SQLTable<T extends Schema = any> {
 			name: ColumnName,
 			distinct?: boolean
 		}[]
-	}): T[] {
-		const results: (T & JoinedTable)[] = []
+	}): Nullable<T & JoinedTable>[] {
+		const results: Nullable<T & JoinedTable>[] = []
 		const maxRows = options?.limit ?? Infinity
 		const requestedColumns = new Set(
 			options?.columns?.map(col => col.name) ?? this.#columnIndexes.keys()
@@ -404,7 +400,7 @@ export class SQLTable<T extends Schema = any> {
      */
 	delete(options?: {
 		limit?: number
-		where?: (row: T) => boolean
+		where?: (row: Nullable<T>) => boolean
 	}): number {
 		const maxDeletes = options?.limit ?? Infinity
 		let deletedCount = 0
@@ -478,7 +474,10 @@ export class SQLTable<T extends Schema = any> {
      * @param where - Condition determining if a row should be updated with a payload.
      * @returns The total number of successful updates applied.
      */
-	update(values: Partial<T>[], where: (updatePayload: Partial<T>, oldRow: T) => boolean): number {
+	update(
+		values: Nullable<Partial<T>>[],
+		where: (updatePayload: Nullable<Partial<T>>, oldRow: T) => boolean
+	): number {
         if (this.#rows.length === 0 || values.length === 0) {
 			return 0
 		}
@@ -593,9 +592,9 @@ export class SQLTable<T extends Schema = any> {
      * @param values - A single row object or an array of row objects to insert.
      * @returns An array of the newly inserted, hydrated row objects.
      */
-	insert(values: Partial<T> | Partial<T>[]): T[] {
+	insert(values: Nullable<Partial<T>> | Nullable<Partial<T>>[]): Nullable<T>[] {
 		const rowsToInsert = Array.isArray(values) ? values : [values]
-		const insertedRows: T[] = []
+		const insertedRows: Nullable<T>[] = []
 		for (const inputValue of rowsToInsert) {
 			const rawRow: (number | null)[] = new Array(this.#columnIndexes.size).fill(null)
 			const hydratedRow: Record<string, any> = {}
