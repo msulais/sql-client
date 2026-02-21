@@ -1,6 +1,6 @@
 # 🗄️ sql-client
 
-A lightweight, in-memory SQL-like database system written in TypeScript. It features memory optimization through a shared string pool, automatic hydration of data types, and relational table joining capabilities.
+A lightweight, in-memory SQL-like database system that run in browser and node js. It features memory optimization through a shared string pool, automatic hydration of data types, and relational table joining capabilities.
 
 ## ✨ Features
 
