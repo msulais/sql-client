@@ -7,10 +7,18 @@ export enum DataTypes {
 	Datetime,
 }
 
+type StringId = number
+type ColumnIndex = number
+
+/**
+ * Column name
+ */
 export type ColumnName = string
+
+/**
+ * Table name
+ */
 export type TableName = string
-export type StringId = number
-export type ColumnIndex = number
 export type Schema = Record<ColumnName, number | string | Date | null>
 export type ColumnProperties<T extends Record<ColumnName, any>> = ({ name: keyof T } & (
 	{ type: DataTypes.String | DataTypes.Datetime }
@@ -60,7 +68,7 @@ function deleteString(stringId: StringId): void {
  * Represents an in-memory SQL-like table that stores data efficiently.
  * @template T - The schema type of the table.
  */
-export class SQLTable<T extends Schema = Record<string, any>> {
+export class SQLTable<T extends Schema = any> {
 	#name: TableName
 	#sharedTables = new Map<SQLTable['name'], SQLTable>()
 	#columnProperties = new Map<keyof T, ColumnProperties<any>>()
@@ -167,7 +175,7 @@ export class SQLTable<T extends Schema = Record<string, any>> {
      * @param [options.columns] - Specific columns to select and distinct flags.
      * @returns An array of hydrated row objects matching the query.
      */
-	query<JoinedTable extends Schema = Record<string, any>>(options?: {
+	query<JoinedTable extends Schema = any>(options?: {
 		limit?: number
 		where?: (row: T) => boolean
 		orderBy?: ColumnName
