@@ -180,7 +180,7 @@ export class SQLTable<T extends Schema = any> {
      * @param [options.columns] - Specific columns to select and distinct flags.
      * @returns An array of hydrated row objects matching the query.
      */
-	query<JoinedTable extends Schema = any>(options?: {
+	query<JoinedTable extends Schema = T>(options?: {
 		limit?: number
 		where?: (row: Nullable<T>) => boolean
 		orderBy?: ColumnName
