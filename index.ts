@@ -74,12 +74,12 @@ function deleteString(stringId: StringId): void {
  * @template T - The schema type of the table.
  */
 export class SQLTable<T extends Schema = any> {
-	#name: TableName
-	#sharedTables = new Map<SQLTable['name'], SQLTable>()
-	#columnProperties = new Map<keyof T, ColumnProperties<any>>()
-	#columnIndexes = new Map<keyof T, ColumnIndex>()
-	#autoIncrement: number[] = []
-	#rows: (number | null)[][] = []
+	private _name: TableName
+	private _sharedTables = new Map<SQLTable['name'], SQLTable>()
+	private _columnProperties = new Map<keyof T, ColumnProperties<any>>()
+	private _columnIndexes = new Map<keyof T, ColumnIndex>()
+	private _autoIncrement: number[] = []
+	private _rows: (number | null)[][] = []
 
 	/**
      * Creates a new SQLTable instance.
@@ -87,7 +87,7 @@ export class SQLTable<T extends Schema = any> {
      * @param columns - The column definitions for the table.
      */
 	constructor(name: string, columns: ColumnProperties<T>[]) {
-		this.#name = name
+		this._name = name
 		for (let i = 0; i < columns.length; i++) {
 			const column = columns[i]
 			if (!column) {
@@ -100,21 +100,21 @@ export class SQLTable<T extends Schema = any> {
 				continue
 			}
 
-			this.#autoIncrement.push(0)
-			this.#columnIndexes.set(name, i)
-			this.#columnProperties.set(name, column)
+			this._autoIncrement.push(0)
+			this._columnIndexes.set(name, i)
+			this._columnProperties.set(name, column)
 		}
 	}
 
 	/** Gets the name of the table. */
 	get name(): string {
-		return this.#name
+		return this._name
 	}
 
 	/** Gets an array of column names in the table. */
 	get columns(): string[] {
 		const cols: (keyof T)[] = []
-		for (const [col, i] of this.#columnIndexes) {
+		for (const [col, i] of this._columnIndexes) {
 			cols[i] = col
 		}
 
@@ -123,7 +123,7 @@ export class SQLTable<T extends Schema = any> {
 
 	/** Gets the total number of rows currently stored in the table. */
 	get rowCount(): number {
-        return this.#rows.length
+        return this._rows.length
     }
 
 	/**
@@ -135,7 +135,7 @@ export class SQLTable<T extends Schema = any> {
 		autoIncrease?: boolean;
 	}> {
         const schemaInfo: Record<string, { type: string, autoIncrease?: boolean }> = {}
-        for (const [colName, property] of this.#columnProperties) {
+        for (const [colName, property] of this._columnProperties) {
             let typeName = ''
             switch (property.type) {
 			case DataTypes.Number: typeName = 'Number'; break
@@ -160,11 +160,11 @@ export class SQLTable<T extends Schema = any> {
 	connect(tables: SQLTable[]): void {
 		for (const table of tables) {
 			const name = table.name
-			if (name === this.#name) {
+			if (name === this._name) {
 				continue
 			}
 
-			this.#sharedTables.set(name, table)
+			this._sharedTables.set(name, table)
 		}
 	}
 
@@ -198,7 +198,7 @@ export class SQLTable<T extends Schema = any> {
 		const results: Nullable<T & JoinedTable>[] = []
 		const maxRows = options?.limit ?? Infinity
 		const requestedColumns = new Set(
-			options?.columns?.map(col => col.name) ?? this.#columnIndexes.keys()
+			options?.columns?.map(col => col.name) ?? this._columnIndexes.keys()
 		)
 		const distinctColumnNames = new Set(
 			options?.columns?.filter(col => col.distinct).map(col => col.name)
@@ -210,7 +210,7 @@ export class SQLTable<T extends Schema = any> {
 			columnsToPick: Set<string>
 		) => {
 			const hydratedData: Record<string, any> = {}
-			for (const [colName, colIdx] of targetTable.#columnIndexes) {
+			for (const [colName, colIdx] of targetTable._columnIndexes) {
 				const colStr = colName as string
 				if (!columnsToPick.has(colStr)) {
 					continue
@@ -222,7 +222,7 @@ export class SQLTable<T extends Schema = any> {
 					continue
 				}
 
-				const props = targetTable.#columnProperties.get(colName)!
+				const props = targetTable._columnProperties.get(colName)!
 				switch (props.type) {
 					case DataTypes.Number:
 						hydratedData[colStr] = rawVal
@@ -242,7 +242,7 @@ export class SQLTable<T extends Schema = any> {
 		const createLazyProxy = (targetTable: SQLTable<any>, getRawRow: () => (number | null)[]) => (
 			new Proxy({}, {
 				get: (_, propertyName: string) => {
-					const colIdx = targetTable.#columnIndexes.get(propertyName)
+					const colIdx = targetTable._columnIndexes.get(propertyName)
 					if (colIdx === undefined) {
 						return
 					}
@@ -252,7 +252,7 @@ export class SQLTable<T extends Schema = any> {
 						return null
 					}
 
-					const props = targetTable.#columnProperties.get(propertyName)!
+					const props = targetTable._columnProperties.get(propertyName)!
 					if (props.type === DataTypes.String) {
 						return SHARED_STRING.get(rawVal)?.[0] ?? null
 					}
@@ -268,23 +268,23 @@ export class SQLTable<T extends Schema = any> {
 
 		let currentRawRow: (number | null)[] = []
 		const lazyRowProxy = createLazyProxy(this, () => currentRawRow) as T
-		ROW_LOOP: for (let rowIndex = 0; rowIndex < this.#rows.length; rowIndex++) {
+		ROW_LOOP: for (let rowIndex = 0; rowIndex < this._rows.length; rowIndex++) {
 			if (results.length >= maxRows) {
 				break ROW_LOOP
 			}
 
-			if (!this.#rows[rowIndex]) {
+			if (!this._rows[rowIndex]) {
 				continue
 			}
 
-			currentRawRow = this.#rows[rowIndex]!
+			currentRawRow = this._rows[rowIndex]!
 			if (options?.where && !options.where(lazyRowProxy)) {
 				continue ROW_LOOP
 			}
 
 			// DISTINCT LOGIC
 			for (const distinctCol of distinctColumnNames) {
-				const colIdx = this.#columnIndexes.get(distinctCol)
+				const colIdx = this._columnIndexes.get(distinctCol)
 				if (!colIdx) {
 					continue
 				}
@@ -316,7 +316,7 @@ export class SQLTable<T extends Schema = any> {
 			// INNER JOIN LOGIC
 			let combinedRows: Record<string, any>[] = [baseHydratedRow]
 			for (const joinConfig of options.join) {
-				const joinedTable = this.#sharedTables.get(joinConfig.table)
+				const joinedTable = this._sharedTables.get(joinConfig.table)
 				if (!joinedTable) {
 					console.error(`Table ${joinConfig.table} not found for join.`)
 					continue
@@ -324,16 +324,16 @@ export class SQLTable<T extends Schema = any> {
 
 				const nextCombinedRows: Record<string, any>[] = []
 				const joinRequestedCols = new Set(
-					joinConfig.columns as string[] ?? joinedTable.#columnIndexes.keys()
+					joinConfig.columns as string[] ?? joinedTable._columnIndexes.keys()
 				)
 				let currentJoinRawRow: (number | null)[] = []
 				const lazyJoinProxy = createLazyProxy(joinedTable, () => currentJoinRawRow) as JoinedTable
-				for (let jRowIndex = 0; jRowIndex < joinedTable.#rows.length; jRowIndex++) {
-					if (!joinedTable.#rows[jRowIndex]) {
+				for (let jRowIndex = 0; jRowIndex < joinedTable._rows.length; jRowIndex++) {
+					if (!joinedTable._rows[jRowIndex]) {
 						continue
 					}
 
-					currentJoinRawRow = joinedTable.#rows[jRowIndex]!
+					currentJoinRawRow = joinedTable._rows[jRowIndex]!
 					if (!joinConfig.on(lazyRowProxy, lazyJoinProxy)) {
 						continue
 					}
@@ -359,7 +359,7 @@ export class SQLTable<T extends Schema = any> {
 		const sortByColumn = options?.orderBy
 		if (
 			!sortByColumn
-			|| !this.#columnIndexes.has(sortByColumn)
+			|| !this._columnIndexes.has(sortByColumn)
 			|| !requestedColumns.has(sortByColumn as string)
 		) {
 			return results
@@ -413,13 +413,13 @@ export class SQLTable<T extends Schema = any> {
 	}): number {
 		const maxDeletes = options?.limit ?? Infinity
 		let deletedCount = 0
-		if (this.#rows.length === 0) {
+		if (this._rows.length === 0) {
 			return 0
 		}
 
 		let currentRawRow: (number | null)[] = []
 		const lazyRowProxy = new Proxy({}, {get: (_, propertyName: string) => {
-			const colIdx = this.#columnIndexes.get(propertyName)
+			const colIdx = this._columnIndexes.get(propertyName)
 			if (colIdx === undefined) {
 				return
 			}
@@ -429,7 +429,7 @@ export class SQLTable<T extends Schema = any> {
 				return null
 			}
 
-			const props = this.#columnProperties.get(propertyName)!
+			const props = this._columnProperties.get(propertyName)!
 			switch (props.type) {
 				case DataTypes.String: return SHARED_STRING.get(rawVal as number)?.[0] ?? null
 				case DataTypes.Datetime: return new Date(rawVal as number)
@@ -439,12 +439,12 @@ export class SQLTable<T extends Schema = any> {
 		}}) as T
 
 		const keptRows: (number | null)[][] = []
-		for (let rowIndex = 0; rowIndex < this.#rows.length; rowIndex++) {
-			if (!this.#rows[rowIndex]) {
+		for (let rowIndex = 0; rowIndex < this._rows.length; rowIndex++) {
+			if (!this._rows[rowIndex]) {
 				continue
 			}
 
-			currentRawRow = this.#rows[rowIndex]!
+			currentRawRow = this._rows[rowIndex]!
 			let shouldDelete = true
 			if (options?.where) {
 				shouldDelete = options.where(lazyRowProxy)
@@ -459,8 +459,8 @@ export class SQLTable<T extends Schema = any> {
 				continue
 			}
 
-			for (const [colName, colIndex] of this.#columnIndexes) {
-				const property = this.#columnProperties.get(colName)!
+			for (const [colName, colIndex] of this._columnIndexes) {
+				const property = this._columnProperties.get(colName)!
 				const rawVal = currentRawRow[colIndex]
 				if (!rawVal || property.type !== DataTypes.String) {
 					continue
@@ -472,7 +472,7 @@ export class SQLTable<T extends Schema = any> {
 			deletedCount++
 		}
 
-		this.#rows = keptRows
+		this._rows = keptRows
 		return deletedCount
 	}
 
@@ -487,7 +487,7 @@ export class SQLTable<T extends Schema = any> {
 		values: Nullable<Partial<T>>[],
 		where: (updatePayload: Nullable<Partial<T>>, oldRow: T) => boolean
 	): number {
-        if (this.#rows.length === 0 || values.length === 0) {
+        if (this._rows.length === 0 || values.length === 0) {
 			return 0
 		}
 
@@ -495,7 +495,7 @@ export class SQLTable<T extends Schema = any> {
         let currentRawRow: (number | null)[] = []
         let updatedCount = 0
         const lazyRowProxy = new Proxy({}, {get: (_, propertyName: string) => {
-			const colIdx = this.#columnIndexes.get(propertyName)
+			const colIdx = this._columnIndexes.get(propertyName)
 			if (colIdx === undefined) {
 				return
 			}
@@ -505,7 +505,7 @@ export class SQLTable<T extends Schema = any> {
 				return null
 			}
 
-			const props = this.#columnProperties.get(propertyName)!
+			const props = this._columnProperties.get(propertyName)!
 			switch (props.type) {
 			case DataTypes.String: return SHARED_STRING.get(rawVal)?.[0] ?? null
 			case DataTypes.Datetime: return new Date(rawVal)
@@ -514,16 +514,16 @@ export class SQLTable<T extends Schema = any> {
 			}
 		}}) as T
 
-        ROW_LOOP: for (let rowIndex = 0; rowIndex < this.#rows.length; rowIndex++) {
+        ROW_LOOP: for (let rowIndex = 0; rowIndex < this._rows.length; rowIndex++) {
             if (pendingUpdates.length === 0) {
                 break ROW_LOOP
             }
 
-			if (!this.#rows[rowIndex]) {
+			if (!this._rows[rowIndex]) {
 				continue
 			}
 
-            currentRawRow = this.#rows[rowIndex]!
+            currentRawRow = this._rows[rowIndex]!
             for (let vIndex = 0; vIndex < pendingUpdates.length; vIndex++) {
                 const updatePayload = pendingUpdates[vIndex]
 				if (!updatePayload) {
@@ -535,8 +535,8 @@ export class SQLTable<T extends Schema = any> {
 				}
 
 				for (const colName in updatePayload) {
-					const colIdx = this.#columnIndexes.get(colName)
-					const props = this.#columnProperties.get(colName)
+					const colIdx = this._columnIndexes.get(colName)
+					const props = this._columnProperties.get(colName)
 					if (colIdx === undefined || !props) {
 						continue
 					}
@@ -579,9 +579,9 @@ export class SQLTable<T extends Schema = any> {
 						currentRawRow[colIdx] = numValue
 						if (
 							(props as any).autoIncrease
-							&& numValue > (this.#autoIncrement[colIdx] ?? 0)
+							&& numValue > (this._autoIncrement[colIdx] ?? 0)
 						) {
-							this.#autoIncrement[colIdx] = numValue
+							this._autoIncrement[colIdx] = numValue
 						}
 						break
 					}}
@@ -605,20 +605,20 @@ export class SQLTable<T extends Schema = any> {
 		const rowsToInsert = Array.isArray(values) ? values : [values]
 		const insertedRows: Nullable<T>[] = []
 		for (const inputValue of rowsToInsert) {
-			const rawRow: (number | null)[] = new Array(this.#columnIndexes.size).fill(null)
+			const rawRow: (number | null)[] = new Array(this._columnIndexes.size).fill(null)
 			const hydratedRow: Record<string, any> = {}
-			for (const [colName, colIndex] of this.#columnIndexes) {
+			for (const [colName, colIndex] of this._columnIndexes) {
 				const colNameStr = colName as string
-				const property = this.#columnProperties.get(colName)!
+				const property = this._columnProperties.get(colName)!
 				let incomingValue = inputValue[colName]
 				if (incomingValue === undefined || incomingValue === null) {
 					if (
 						property.type === DataTypes.Number
 						&& (property as any).autoIncrease
-						&& typeof this.#autoIncrement[colIndex] === 'number'
+						&& typeof this._autoIncrement[colIndex] === 'number'
 					) {
-						this.#autoIncrement[colIndex] += 1
-						incomingValue = this.#autoIncrement[colIndex] as any
+						this._autoIncrement[colIndex] += 1
+						incomingValue = this._autoIncrement[colIndex] as any
 					}
 					else {
 						rawRow[colIndex] = null
@@ -631,9 +631,9 @@ export class SQLTable<T extends Schema = any> {
 				switch (property.type) {
 				case DataTypes.Number:
 					rawRow[colIndex] = incomingValue as number
-					this.#autoIncrement[colIndex] = Math.max(
+					this._autoIncrement[colIndex] = Math.max(
 						incomingValue as number,
-						this.#autoIncrement[colIndex] ?? 0
+						this._autoIncrement[colIndex] ?? 0
 					)
 					break
 				case DataTypes.String:
@@ -645,7 +645,7 @@ export class SQLTable<T extends Schema = any> {
 				}
 			}
 
-			this.#rows.push(rawRow)
+			this._rows.push(rawRow)
 			insertedRows.push(hydratedRow as T)
 		}
 
@@ -657,17 +657,17 @@ export class SQLTable<T extends Schema = any> {
  * Represents a collection of connected SQLTables.
  */
 export class SQLDatabase {
-	#tables = new Map<SQLTable['name'], SQLTable>()
-	#name: string
+	private _tables = new Map<SQLTable['name'], SQLTable>()
+	private _name: string
 
 	/**
      * Creates a new SQLDatabase instance and links the provided tables together.
      * @param tables - The table instances to include in the database.
      */
 	constructor(name: string, ...tables: SQLTable[]) {
-		this.#name = name
+		this._name = name
 		for (const table of tables) {
-			this.#tables.set(table.name, table)
+			this._tables.set(table.name, table)
 			table.connect(tables)
 		}
 	}
@@ -676,7 +676,7 @@ export class SQLDatabase {
 	 * Get database name
 	 */
 	get name(): string {
-		return this.#name
+		return this._name
 	}
 
 	/**
@@ -684,7 +684,7 @@ export class SQLDatabase {
      * @returns {string[]}
      */
 	get tableNames(): string[] {
-        return Array.from(this.#tables.keys())
+        return Array.from(this._tables.keys())
     }
 
 	/**
@@ -694,6 +694,6 @@ export class SQLDatabase {
      * @returns The requested table, or undefined if not found.
      */
     getTable<T extends Schema = any>(name: string): SQLTable<T> | undefined {
-        return this.#tables.get(name) as SQLTable<T> | undefined
+        return this._tables.get(name) as SQLTable<T> | undefined
     }
 }
