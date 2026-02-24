@@ -244,7 +244,7 @@ export class SQLTable<T extends Schema = any> {
 				get: (_, propertyName: string) => {
 					const colIdx = targetTable._columnIndexes.get(propertyName)
 					if (colIdx === undefined) {
-						return
+						return null
 					}
 
 					const rawVal = getRawRow()[colIdx]
@@ -421,7 +421,7 @@ export class SQLTable<T extends Schema = any> {
 		const lazyRowProxy = new Proxy({}, {get: (_, propertyName: string) => {
 			const colIdx = this._columnIndexes.get(propertyName)
 			if (colIdx === undefined) {
-				return
+				return null
 			}
 
 			const rawVal = currentRawRow[colIdx]
@@ -503,7 +503,7 @@ export class SQLTable<T extends Schema = any> {
      */
 	update(
 		values: Nullable<Partial<T>>[],
-		where: (updatePayload: Nullable<Partial<T>>, oldRow: T) => boolean
+		where: (updatePayload: Nullable<Partial<T>>, oldRow: Nullable<T>) => boolean
 	): Nullable<T>[] {
         if (this._rows.length === 0 || values.length === 0) {
 			return []
@@ -514,7 +514,7 @@ export class SQLTable<T extends Schema = any> {
         const lazyRowProxy = new Proxy({}, {get: (_, propertyName: string) => {
 			const colIdx = this._columnIndexes.get(propertyName)
 			if (colIdx === undefined) {
-				return
+				return null
 			}
 
 			const rawVal = currentRawRow[colIdx]
