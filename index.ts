@@ -405,16 +405,16 @@ export class SQLTable<T extends Schema = any> {
      * @param [options] - Deletion options.
      * @param [options.limit] - The maximum number of rows to delete.
      * @param [options.where] - Condition determining which rows to delete.
-     * @returns The number of rows deleted.
+     * @returns The deleted items.
      */
 	delete(options?: {
 		limit?: number
 		where?: (row: Nullable<T>) => boolean
-	}): number {
+	}): Nullable<T>[] {
 		const maxDeletes = options?.limit ?? Infinity
 		let deletedCount = 0
 		if (this._rows.length === 0) {
-			return 0
+			return []
 		}
 
 		let currentRawRow: (number | null)[] = []
@@ -439,6 +439,7 @@ export class SQLTable<T extends Schema = any> {
 		}}) as T
 
 		const keptRows: (number | null)[][] = []
+		const deletedRows: Nullable<T>[] = []
 		for (let rowIndex = 0; rowIndex < this._rows.length; rowIndex++) {
 			if (!this._rows[rowIndex]) {
 				continue
@@ -459,21 +460,38 @@ export class SQLTable<T extends Schema = any> {
 				continue
 			}
 
+			const t: Nullable<T> = {} as T
 			for (const [colName, colIndex] of this._columnIndexes) {
 				const property = this._columnProperties.get(colName)!
 				const rawVal = currentRawRow[colIndex]
-				if (!rawVal || property.type !== DataTypes.String) {
+				t[colName] = null
+				if (rawVal === null) {
 					continue
 				}
 
-				deleteString(rawVal as number)
+				switch (property.type) {
+				case DataTypes.Number:
+					// @ts-ignore
+					t[colName] = rawVal;
+					break
+				case DataTypes.String:
+					// @ts-ignore
+					t[colName] = SHARED_STRING.get(rawVal)?.[0] ?? null
+					deleteString(rawVal as number)
+					break
+				case DataTypes.Datetime:
+					// @ts-ignore
+					t[colName] = new Date(rawVal as number)
+					break
+				}
 			}
 
+			deletedRows.push(t)
 			deletedCount++
 		}
 
 		this._rows = keptRows
-		return deletedCount
+		return deletedRows
 	}
 
 	/**
@@ -481,19 +499,18 @@ export class SQLTable<T extends Schema = any> {
      * Manages string pool references when string columns are updated.
      * @param values - An array of update payloads.
      * @param where - Condition determining if a row should be updated with a payload.
-     * @returns The total number of successful updates applied.
+     * @returns The updates items.
      */
 	update(
 		values: Nullable<Partial<T>>[],
 		where: (updatePayload: Nullable<Partial<T>>, oldRow: T) => boolean
-	): number {
+	): Nullable<T>[] {
         if (this._rows.length === 0 || values.length === 0) {
-			return 0
+			return []
 		}
 
         const pendingUpdates = [...values]
         let currentRawRow: (number | null)[] = []
-        let updatedCount = 0
         const lazyRowProxy = new Proxy({}, {get: (_, propertyName: string) => {
 			const colIdx = this._columnIndexes.get(propertyName)
 			if (colIdx === undefined) {
@@ -514,6 +531,7 @@ export class SQLTable<T extends Schema = any> {
 			}
 		}}) as T
 
+		const updatedRows: Nullable<T>[] = []
         ROW_LOOP: for (let rowIndex = 0; rowIndex < this._rows.length; rowIndex++) {
             if (pendingUpdates.length === 0) {
                 break ROW_LOOP
@@ -587,13 +605,39 @@ export class SQLTable<T extends Schema = any> {
 					}}
 				}
 
-				updatedCount++
 				pendingUpdates.splice(vIndex, 1)
-				continue ROW_LOOP
+				break
             }
+
+			const t: Nullable<T> = {} as T
+			for (const [colName, colIndex] of this._columnIndexes) {
+				const property = this._columnProperties.get(colName)!
+				const rawVal = currentRawRow[colIndex]
+				t[colName] = null
+				if (rawVal === null) {
+					continue
+				}
+
+				switch (property.type) {
+				case DataTypes.Number:
+					// @ts-ignore
+					t[colName] = rawVal;
+					break
+				case DataTypes.String:
+					// @ts-ignore
+					t[colName] = SHARED_STRING.get(rawVal)?.[0] ?? null
+					break
+				case DataTypes.Datetime:
+					// @ts-ignore
+					t[colName] = new Date(rawVal as number)
+					break
+				}
+			}
+
+			updatedRows.push(t)
         }
 
-        return updatedCount
+        return updatedRows
     }
 
 	/**

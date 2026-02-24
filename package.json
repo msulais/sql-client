@@ -4,7 +4,7 @@
   "module": "index.ts",
   "type": "module",
   "license": "MIT",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "author": "Muhammad Sulais",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

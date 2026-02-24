@@ -145,7 +145,7 @@ describe('Custom In-Memory SQL Engine', () => {
                     if (payload.score === 88) return row.id === 2
                     return false
                 }
-            )
+            ).length
 
             expect(updatedCount).toBe(2)
 
@@ -176,7 +176,7 @@ describe('Custom In-Memory SQL Engine', () => {
             const deletedCount = usersTable.delete({
                 where: (row) => row.username === 'Clone',
                 limit: 2
-            })
+            }).length
 
             expect(deletedCount).toBe(2)
             expect(usersTable.rowCount).toBe(1) // One clone survives
@@ -259,8 +259,7 @@ describe('Custom In-Memory SQL Engine', () => {
                 [{ username: 'StableString' }],
                 (payload, row) => row.id === 99
             )
-
-            expect(updated).toBe(1)
+            expect(updated.length).toBe(1)
             const check = usersTable.query({ where: r => r.id === 99 })
             expect(check[0]?.username).toBe('StableString')
         })
