@@ -645,14 +645,31 @@ export class SQLTable<T extends Schema = any> {
     }
 
 	/**
-     * Inserts new rows into the table.
-     * @param values - A single row object or an array of row objects to insert.
-     * @returns An array of the newly inserted, hydrated row objects.
+     * Inserts new rows into the table, or updates them if a conflict occurs on the specified key
+     * @param values - A single row object or an array of row objects to insert
+     * @param conflictKey - Optional column name to check for conflicts (UPSERT). If a match is found, updates the row instead
+     * @returns An array of the newly inserted or updated hydrated row objects
      */
-	insert(values: Nullable<Partial<T>> | Nullable<Partial<T>>[]): Nullable<T>[] {
+    insert(
+        values: Nullable<Partial<T>> | Nullable<Partial<T>>[],
+        conflictKey?: keyof T
+    ): Nullable<T>[] {
 		const rowsToInsert = Array.isArray(values) ? values : [values]
 		const insertedRows: Nullable<T>[] = []
 		for (const inputValue of rowsToInsert) {
+			if (conflictKey && inputValue[conflictKey] !== undefined) {
+				const conflictValue = inputValue[conflictKey]
+				const updatedRows = this.update(
+					[inputValue],
+					(_, oldRow) => oldRow !== null && oldRow[conflictKey] === conflictValue
+				)
+
+				if (updatedRows.length > 0) {
+					insertedRows.push(updatedRows[0]!)
+					continue
+				}
+			}
+
 			const rawRow: (number | null)[] = new Array(this._columnIndexes.size).fill(null)
 			const hydratedRow: Record<string, any> = {}
 			for (const [colName, colIndex] of this._columnIndexes) {
@@ -698,7 +715,7 @@ export class SQLTable<T extends Schema = any> {
 		}
 
 		return insertedRows
-	}
+    }
 }
 
 /**
