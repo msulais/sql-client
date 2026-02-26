@@ -48,10 +48,7 @@ const postsTable = new SQLTable<PostSchema>('posts', [
     { name: 'title', type: DataTypes.String }
 ]);
 
-// 3. Initialize the database and connect the tables
-const db = new SQLDatabase(usersTable, postsTable);
-
-// 4. Insert data
+// 3. Insert data
 usersTable.insert([
     { name: 'Alice', createdAt: new Date() },
     { name: 'Bob', createdAt: new Date() }
@@ -62,6 +59,9 @@ postsTable.insert([
     { authorId: 1, title: 'Advanced Memory Management' },
     { authorId: 2, title: 'SQL Joins Explained' }
 ]);
+
+// 4. Connect table to enable JOIN operation
+usersTable.connect([postsTable])
 
 // 5. Query data with a Join
 // Let's get all posts written by Alice
@@ -80,6 +80,9 @@ console.log(alicePosts);
   { id: 2, name: 'Alice', createdAt: 2026-02-21T..., authorId: 1, title: 'Advanced Memory Management' }
 ]
 */
+
+// This is not needed. But you can automatically connect all table.
+const db = new SQLDatabase(usersTable, postsTable);
 ```
 
 ## 📄 License
