@@ -184,7 +184,7 @@ export class SQLTable<T extends Schema = any> {
 		limit?: number
 		where?: (row: Nullable<T>) => boolean
 		orderBy?: keyof CurrentTable
-		orderMode?: 'ASC' | 'DESC'
+		orderDirection?: 'ASC' | 'DESC'
 		join?: {
 			table: TableName
 			columns?: (keyof JoinedTable)[]
@@ -366,7 +366,7 @@ export class SQLTable<T extends Schema = any> {
 		}
 
 		// SORT RESULTS
-		const isDesc = options?.orderMode === 'DESC'
+		const isDesc = options?.orderDirection === 'DESC'
 		results.sort((a, b) => {
 			const valA = a[sortByColumn as keyof typeof a]
 			const valB = b[sortByColumn as keyof typeof b]

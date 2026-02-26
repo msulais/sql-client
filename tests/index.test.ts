@@ -110,7 +110,7 @@ describe('Custom In-Memory SQL Engine', () => {
 			expect(results.length).toBe(4)
 			expect(usersTable.rowCount).toBe(4) // 2 original + 2 new
 
-			const check = usersTable.query({ orderBy: 'username', orderMode: 'ASC' })
+			const check = usersTable.query({ orderBy: 'username', orderDirection: 'ASC' })
 			expect(check[0]?.username).toBe('UserA')
 			expect(check[0]?.score).toBe(99)  // Updated
 
@@ -181,7 +181,7 @@ describe('Custom In-Memory SQL Engine', () => {
 		it('should sort correctly, putting NULLs in their proper place', () => {
 			const sorted = usersTable.query({
 				orderBy: 'score',
-				orderMode: 'ASC',
+				orderDirection: 'ASC',
 				columns: [{ name: 'username' }, { name: 'score' }]
 			})
 
