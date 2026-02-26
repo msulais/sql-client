@@ -180,10 +180,10 @@ export class SQLTable<T extends Schema = any> {
      * @param [options.columns] - Specific columns to select and distinct flags.
      * @returns An array of hydrated row objects matching the query.
      */
-	query<JoinedTable extends Schema = T>(options?: {
+	query<JoinedTable extends Schema = T, CurrentTable extends Schema = T>(options?: {
 		limit?: number
 		where?: (row: Nullable<T>) => boolean
-		orderBy?: ColumnName
+		orderBy?: keyof CurrentTable
 		orderMode?: 'ASC' | 'DESC'
 		join?: {
 			table: TableName
@@ -191,19 +191,19 @@ export class SQLTable<T extends Schema = any> {
 			on: (currentTableValue: Nullable<T>, joinTableValue: Nullable<JoinedTable>) => boolean
 		}[]
 		columns?: {
-			name: ColumnName,
+			name: keyof CurrentTable,
 			distinct?: boolean
 		}[]
-	}): Nullable<T & JoinedTable>[] {
-		const results: Nullable<T & JoinedTable>[] = []
+	}): Nullable<CurrentTable & JoinedTable>[] {
+		const results: Nullable<CurrentTable & JoinedTable>[] = []
 		const maxRows = options?.limit ?? Infinity
 		const requestedColumns = new Set(
-			options?.columns?.map(col => col.name) ?? this._columnIndexes.keys()
+			options?.columns?.map(col => col.name) ?? (this._columnIndexes.keys() as unknown as (keyof CurrentTable)[])
 		)
 		const distinctColumnNames = new Set(
 			options?.columns?.filter(col => col.distinct).map(col => col.name)
 		)
-		const seenDistinctValues = new Map<ColumnName, Set<number>>()
+		const seenDistinctValues = new Map<keyof CurrentTable, Set<number>>()
 		const hydrate = (
 			targetTable: SQLTable<any>,
 			rawRow: (number | null)[],
@@ -224,15 +224,15 @@ export class SQLTable<T extends Schema = any> {
 
 				const props = targetTable._columnProperties.get(colName)!
 				switch (props.type) {
-					case DataTypes.Number:
-						hydratedData[colStr] = rawVal
-						break
-					case DataTypes.String:
-						hydratedData[colStr] = SHARED_STRING.get(rawVal)?.[0] ?? null
-						break
-					case DataTypes.Datetime:
-						hydratedData[colStr] = new Date(rawVal)
-						break
+				case DataTypes.Number:
+					hydratedData[colStr] = rawVal
+					break
+				case DataTypes.String:
+					hydratedData[colStr] = SHARED_STRING.get(rawVal)?.[0] ?? null
+					break
+				case DataTypes.Datetime:
+					hydratedData[colStr] = new Date(rawVal)
+					break
 				}
 			}
 
@@ -284,7 +284,7 @@ export class SQLTable<T extends Schema = any> {
 
 			// DISTINCT LOGIC
 			for (const distinctCol of distinctColumnNames) {
-				const colIdx = this._columnIndexes.get(distinctCol)
+				const colIdx = this._columnIndexes.get(distinctCol as keyof T)
 				if (!colIdx) {
 					continue
 				}
@@ -309,7 +309,7 @@ export class SQLTable<T extends Schema = any> {
 
 			const baseHydratedRow = hydrate(this, currentRawRow, requestedColumns as Set<string>)
 			if (!options?.join || options.join.length <= 0) {
-				results.push(baseHydratedRow as (T & JoinedTable))
+				results.push(baseHydratedRow as (CurrentTable & JoinedTable))
 				continue
 			}
 
@@ -352,14 +352,14 @@ export class SQLTable<T extends Schema = any> {
 					continue
 				}
 
-				results.push(finalCombinedRow as (T & JoinedTable))
+				results.push(finalCombinedRow as (CurrentTable & JoinedTable))
 			}
 		}
 
 		const sortByColumn = options?.orderBy
 		if (
 			!sortByColumn
-			|| !this._columnIndexes.has(sortByColumn)
+			|| !this._columnIndexes.has(sortByColumn as keyof T)
 			|| !requestedColumns.has(sortByColumn as string)
 		) {
 			return results
