@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "test": "vitest"
+    "test": "bun test"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -26,5 +26,8 @@
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "bun-types": "^1.3.10"
   }
 }

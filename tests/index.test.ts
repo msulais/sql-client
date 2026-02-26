@@ -1,5 +1,5 @@
 import { DataTypes, SQLDatabase, SQLTable } from '../index'
-import { describe, beforeEach, it, expect } from 'vitest'
+import { describe, beforeEach, it, expect } from 'bun:test'
 
 describe('Custom In-Memory SQL Engine', () => {
     let usersTable: SQLTable
