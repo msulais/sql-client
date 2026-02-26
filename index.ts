@@ -499,15 +499,17 @@ export class SQLTable<T extends Schema = any> {
      * Manages string pool references when string columns are updated.
      * @param values - An array of update payloads.
      * @param where - Condition determining if a row should be updated with a payload.
+	 * @param map - Optional function to transform the update payload based on the existing row data before applying the update
      * @returns The updates items.
      */
 	update(
-		values: Nullable<Partial<T>>[],
-		where: (updatePayload: Nullable<Partial<T>>, oldRow: Nullable<T>) => boolean
-	): Nullable<T>[] {
+        values: Nullable<Partial<T>>[],
+        where: (updatePayload: Nullable<Partial<T>>, oldRow: Nullable<T>) => boolean,
+        map?: (updatePayload: Nullable<Partial<T>>, oldRow: Nullable<T>) => Nullable<Partial<T>>
+    ): Nullable<T>[] {
         if (this._rows.length === 0 || values.length === 0) {
-			return []
-		}
+            return []
+        }
 
         const pendingUpdates = [...values]
         let currentRawRow: (number | null)[] = []
@@ -542,6 +544,7 @@ export class SQLTable<T extends Schema = any> {
 			}
 
             currentRawRow = this._rows[rowIndex]!
+			let isUpdated = false
             for (let vIndex = 0; vIndex < pendingUpdates.length; vIndex++) {
                 const updatePayload = pendingUpdates[vIndex]
 				if (!updatePayload) {
@@ -552,14 +555,15 @@ export class SQLTable<T extends Schema = any> {
 					continue
 				}
 
-				for (const colName in updatePayload) {
+				const finalPayload = map ? map(updatePayload, lazyRowProxy) : updatePayload
+				for (const colName in finalPayload) {
 					const colIdx = this._columnIndexes.get(colName)
 					const props = this._columnProperties.get(colName)
 					if (colIdx === undefined || !props) {
 						continue
 					}
 
-					const newValue = updatePayload[colName]
+					const newValue = finalPayload[colName as keyof typeof finalPayload]
 					const oldRawVal = currentRawRow[colIdx]
 					if (oldRawVal === undefined) {
 						continue
@@ -606,35 +610,35 @@ export class SQLTable<T extends Schema = any> {
 				}
 
 				pendingUpdates.splice(vIndex, 1)
+				isUpdated = true
 				break
             }
 
-			const t: Nullable<T> = {} as T
-			for (const [colName, colIndex] of this._columnIndexes) {
-				const property = this._columnProperties.get(colName)!
-				const rawVal = currentRawRow[colIndex]
-				t[colName] = null
-				if (rawVal === null) {
-					continue
+			if (isUpdated) {
+				const t: Nullable<T> = {} as T
+				for (const [colName, colIndex] of this._columnIndexes) {
+					const property = this._columnProperties.get(colName)!
+					const rawVal = currentRawRow[colIndex]
+					t[colName as keyof T] = null as any
+					if (rawVal === null) {
+						continue
+					}
+
+					switch (property.type) {
+					case DataTypes.Number:
+						t[colName as keyof T] = rawVal as any
+						break
+					case DataTypes.String:
+						t[colName as keyof T] = (SHARED_STRING.get(rawVal)?.[0] ?? null) as any
+						break
+					case DataTypes.Datetime:
+						t[colName as keyof T] = new Date(rawVal as number) as any
+						break
+					}
 				}
 
-				switch (property.type) {
-				case DataTypes.Number:
-					// @ts-ignore
-					t[colName] = rawVal;
-					break
-				case DataTypes.String:
-					// @ts-ignore
-					t[colName] = SHARED_STRING.get(rawVal)?.[0] ?? null
-					break
-				case DataTypes.Datetime:
-					// @ts-ignore
-					t[colName] = new Date(rawVal as number)
-					break
-				}
+				updatedRows.push(t)
 			}
-
-			updatedRows.push(t)
         }
 
         return updatedRows
