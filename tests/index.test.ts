@@ -88,6 +88,67 @@ describe('Custom In-Memory SQL Engine', () => {
 			expect(results[0]?.username).toBe('Newcomer')
 			expect(usersTable.rowCount).toBe(1)
 		})
+
+		it('should handle a batch of mixed inserts and updates efficiently in one go', () => {
+			// Setup initial data
+			usersTable.insert([
+				{ username: 'UserA', role: 'User', score: 10 },
+				{ username: 'UserB', role: 'User', score: 20 }
+			])
+
+			// Batch payload: UserA updates, UserB updates, UserC inserts, UserD inserts
+			const batchPayload = [
+				{ username: 'UserA', score: 99 },
+				{ username: 'UserB', score: 88 },
+				{ username: 'UserC', role: 'Admin', score: 100 },
+				{ username: 'UserD', role: 'User', score: 50 }
+			]
+
+			const results = usersTable.insert(batchPayload, 'username')
+
+			// Should return all 4 hydrated rows (2 updated, 2 inserted)
+			expect(results.length).toBe(4)
+			expect(usersTable.rowCount).toBe(4) // 2 original + 2 new
+
+			const check = usersTable.query({ orderBy: 'username', orderMode: 'ASC' })
+			expect(check[0]?.username).toBe('UserA')
+			expect(check[0]?.score).toBe(99)  // Updated
+
+			expect(check[1]?.username).toBe('UserB')
+			expect(check[1]?.score).toBe(88)  // Updated
+
+			expect(check[2]?.username).toBe('UserC')
+			expect(check[2]?.score).toBe(100) // Inserted
+
+			expect(check[3]?.username).toBe('UserD')
+			expect(check[3]?.score).toBe(50)  // Inserted
+		})
+
+		it('should respect the onConflict callback to conditionally skip updates', () => {
+			usersTable.insert([
+				{ username: 'Player1', score: 100 },
+				{ username: 'Player2', score: 100 }
+			])
+
+			// Try to update both, but only allow if new score is higher
+			const results = usersTable.insert(
+				[
+					{ username: 'Player1', score: 150 }, // Should update
+					{ username: 'Player2', score: 50 }   // Should be skipped (score is lower)
+				],
+				'username',
+				(payload, oldRow) => (payload.score as number) > (oldRow.score as number)
+			)
+
+			// Player1 updated, Player2 skipped entirely (not inserted as new, not updated)
+			expect(results.length).toBe(1)
+			expect(results[0]?.username).toBe('Player1')
+			expect(results[0]?.score).toBe(150)
+
+			const p2 = usersTable.query({ where: r => r.username === 'Player2' })
+			expect(p2[0]?.score).toBe(100) // Unchanged
+			expect(usersTable.rowCount).toBe(2) // Still just the original 2 rows
+		})
 	})
 
 	describe('3. Query & Filtering Edge Cases', () => {

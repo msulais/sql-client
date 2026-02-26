@@ -658,35 +658,49 @@ export class SQLTable<T extends Schema = any> {
 	): Nullable<T>[] {
 		const rowsToInsert = Array.isArray(values) ? values : [values]
 		const insertedRows: Nullable<T>[] = []
-		for (const inputValue of rowsToInsert) {
-			if (conflictKey && inputValue[conflictKey] !== undefined) {
-				let conflictFound = false
-				const conflictValue = inputValue[conflictKey]
-				const updatedRows = this.update(
-					[inputValue],
-					(payload, oldRow) => {
-						if (oldRow === null || oldRow[conflictKey] !== conflictValue) {
-							return false
-						}
-
-						conflictFound = true
-						if (onConflict) {
-							return onConflict(payload, oldRow)
-						}
-
-						return true
-					}
-				)
-
-				if (conflictFound) {
-					if (updatedRows.length > 0) {
-						insertedRows.push(updatedRows[0]!)
-					}
-
-					continue
-				}
+		let itemsToInsert = rowsToInsert
+		UPDATE: {
+			if (!conflictKey) {
+				break UPDATE
 			}
 
+			const potentialUpdates = rowsToInsert.filter(v =>
+				v[conflictKey] !== undefined
+				|| v[conflictKey] !== null
+			)
+			if (potentialUpdates.length <= 0) {
+				break UPDATE
+			}
+
+			const matchedConflictValues = new Set<any>()
+			const updatedRows = this.update(potentialUpdates, (payload, oldRow) => {
+				const payloadValue = payload[conflictKey]
+				const oldRowValue = oldRow[conflictKey]
+				if (
+					oldRowValue === null
+					|| (
+						oldRow instanceof Date
+						&& payloadValue instanceof Date
+						&& oldRow.getTime() !== payloadValue.getTime()
+					)
+					|| oldRowValue !== payloadValue
+				) {
+					return false
+				}
+
+				matchedConflictValues.add(payloadValue)
+				return onConflict?.(payload, oldRow) ?? true
+			})
+
+			insertedRows.push(...updatedRows)
+			itemsToInsert = rowsToInsert.filter(v =>
+				v[conflictKey] === undefined
+				|| v[conflictKey] === null
+				|| !matchedConflictValues.has(v[conflictKey])
+			)
+		}
+
+		for (const inputValue of itemsToInsert) {
 			const rawRow: (number | null)[] = new Array(this._columnIndexes.size).fill(null)
 			const hydratedRow: Record<string, any> = {}
 			for (const [colName, colIndex] of this._columnIndexes) {
