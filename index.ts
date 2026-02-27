@@ -12,7 +12,7 @@ type ColumnIndex = number
 
 /** Make all properties in T nullable */
 export type Nullable<T> = {
-    [P in keyof T]: T[P] | null
+	[P in keyof T]: T[P] | null
 }
 
 /** Column name (string) */
@@ -82,10 +82,10 @@ export class SQLTable<T extends Schema = any> {
 	private _rows: (number | null)[][] = []
 
 	/**
-     * Creates a new SQLTable instance.
-     * @param name - The name of the table.
-     * @param columns - The column definitions for the table.
-     */
+	 * Creates a new SQLTable instance.
+	 * @param name - The name of the table.
+	 * @param columns - The column definitions for the table.
+	 */
 	constructor(name: string, columns: ColumnProperties<T>[]) {
 		this._name = name
 		for (let i = 0; i < columns.length; i++) {
@@ -123,40 +123,40 @@ export class SQLTable<T extends Schema = any> {
 
 	/** Gets the total number of rows currently stored in the table. */
 	get rowCount(): number {
-        return this._rows.length
-    }
+		return this._rows.length
+	}
 
 	/**
 	 * Gets a schema representation of the table columns and their configurations.
-     * @returns The table schema.
-     */
+	 * @returns The table schema.
+	 */
 	get schema(): Record<string, {
 		type: string;
 		autoIncrease?: boolean;
 	}> {
-        const schemaInfo: Record<string, { type: string, autoIncrease?: boolean }> = {}
-        for (const [colName, property] of this._columnProperties) {
-            let typeName = ''
-            switch (property.type) {
+		const schemaInfo: Record<string, { type: string, autoIncrease?: boolean }> = {}
+		for (const [colName, property] of this._columnProperties) {
+			let typeName = ''
+			switch (property.type) {
 			case DataTypes.Number: typeName = 'Number'; break
 			case DataTypes.String: typeName = 'String'; break
 			case DataTypes.Datetime: typeName = 'Datetime'; break
-            }
+			}
 
-            schemaInfo[colName as string] = {
-                type: typeName,
-                // Only attach autoIncrease if it's true
-                ...((property as any).autoIncrease ? { autoIncrease: true } : {})
-            }
-        }
+			schemaInfo[colName as string] = {
+				type: typeName,
+				// Only attach autoIncrease if it's true
+				...((property as any).autoIncrease ? { autoIncrease: true } : {})
+			}
+		}
 
-        return schemaInfo
-    }
+		return schemaInfo
+	}
 
 	/**
-     * Connects other tables to this table to enable JOIN operations.
-     * @param tables - An array of table instances to connect.
-     */
+	 * Connects other tables to this table to enable JOIN operations.
+	 * @param tables - An array of table instances to connect.
+	 */
 	connect(tables: SQLTable[]): void {
 		for (const table of tables) {
 			const name = table.name
@@ -169,17 +169,17 @@ export class SQLTable<T extends Schema = any> {
 	}
 
 	/**
-     * Queries the table for data, supporting filtering, joins, sorting, and limits.
-     * @template JoinedTable - The resulting type when joining with another table.
-     * @param [options] - The query configuration options.
-     * @param [options.limit] - The maximum number of rows to return.
-     * @param [options.where] - A filter function evaluated against each row.
-     * @param [options.orderBy] - The column name to sort the results by.
-     * @param [options.orderMode] - The direction of the sort.
-     * @param [options.join] Join configurations.
-     * @param [options.columns] - Specific columns to select and distinct flags.
-     * @returns An array of hydrated row objects matching the query.
-     */
+	 * Queries the table for data, supporting filtering, joins, sorting, and limits.
+	 * @template JoinedTable - The resulting type when joining with another table.
+	 * @param [options] - The query configuration options.
+	 * @param [options.limit] - The maximum number of rows to return.
+	 * @param [options.where] - A filter function evaluated against each row.
+	 * @param [options.orderBy] - The column name to sort the results by.
+	 * @param [options.orderMode] - The direction of the sort.
+	 * @param [options.join] Join configurations.
+	 * @param [options.columns] - Specific columns to select and distinct flags.
+	 * @returns An array of hydrated row objects matching the query.
+	 */
 	query<JoinedTable extends Schema = T, CurrentTable extends Schema = T>(options?: {
 		limit?: number
 		where?: (value: Nullable<T>) => boolean
@@ -400,13 +400,13 @@ export class SQLTable<T extends Schema = any> {
 	}
 
 	/**
-     * Deletes rows from the table based on a condition.
-     * Automatically cleans up unused strings from the shared pool.
-     * @param [options] - Deletion options.
-     * @param [options.limit] - The maximum number of rows to delete.
-     * @param [options.where] - Condition determining which rows to delete.
-     * @returns The deleted items.
-     */
+	 * Deletes rows from the table based on a condition.
+	 * Automatically cleans up unused strings from the shared pool.
+	 * @param [options] - Deletion options.
+	 * @param [options.limit] - The maximum number of rows to delete.
+	 * @param [options.where] - Condition determining which rows to delete.
+	 * @returns The deleted items.
+	 */
 	delete(options?: {
 		limit?: number
 		where?: (value: Nullable<T>) => boolean
@@ -495,25 +495,25 @@ export class SQLTable<T extends Schema = any> {
 	}
 
 	/**
-     * Updates rows in the table matching a given condition.
-     * Manages string pool references when string columns are updated.
-     * @param values - An array of update payloads.
-     * @param where - Condition determining if a row should be updated with a payload.
+	 * Updates rows in the table matching a given condition.
+	 * Manages string pool references when string columns are updated.
+	 * @param values - An array of update payloads.
+	 * @param where - Condition determining if a row should be updated with a payload.
 	 * @param map - Optional function to transform the update payload based on the existing row data before applying the update. Skipped if `where` return `false`.
-     * @returns The updates items.
-     */
+	 * @returns The updates items.
+	 */
 	update(
-        values: Nullable<Partial<T>>[],
-        where: (newValue: Nullable<Partial<T>>, oldValue: Nullable<T>) => boolean,
-        map?: (newValue: Nullable<Partial<T>>, oldValue: Nullable<T>) => Nullable<Partial<T>>
-    ): Nullable<T>[] {
-        if (this._rows.length === 0 || values.length === 0) {
-            return []
-        }
+		values: Nullable<Partial<T>>[],
+		where: (newValue: Nullable<Partial<T>>, oldValue: Nullable<T>) => boolean,
+		map?: (newValue: Nullable<Partial<T>>, oldValue: Nullable<T>) => Nullable<Partial<T>>
+	): Nullable<T>[] {
+		if (this._rows.length === 0 || values.length === 0) {
+			return []
+		}
 
-        const pendingUpdates = [...values]
-        let currentRawRow: (number | null)[] = []
-        const lazyRowProxy = new Proxy({}, {get: (_, propertyName: string) => {
+		const pendingUpdates = [...values]
+		let currentRawRow: (number | null)[] = []
+		const lazyRowProxy = new Proxy({}, {get: (_, propertyName: string) => {
 			const colIdx = this._columnIndexes.get(propertyName)
 			if (colIdx === undefined) {
 				return null
@@ -534,19 +534,19 @@ export class SQLTable<T extends Schema = any> {
 		}}) as T
 
 		const updatedRows: Nullable<T>[] = []
-        ROW_LOOP: for (let rowIndex = 0; rowIndex < this._rows.length; rowIndex++) {
-            if (pendingUpdates.length === 0) {
-                break ROW_LOOP
-            }
+		ROW_LOOP: for (let rowIndex = 0; rowIndex < this._rows.length; rowIndex++) {
+			if (pendingUpdates.length === 0) {
+				break ROW_LOOP
+			}
 
 			if (!this._rows[rowIndex]) {
 				continue
 			}
 
-            currentRawRow = this._rows[rowIndex]!
+			currentRawRow = this._rows[rowIndex]!
 			let isUpdated = false
-            for (let vIndex = 0; vIndex < pendingUpdates.length; vIndex++) {
-                const updatePayload = pendingUpdates[vIndex]
+			for (let vIndex = 0; vIndex < pendingUpdates.length; vIndex++) {
+				const updatePayload = pendingUpdates[vIndex]
 				if (!updatePayload) {
 					continue
 				}
@@ -612,7 +612,7 @@ export class SQLTable<T extends Schema = any> {
 				pendingUpdates.splice(vIndex, 1)
 				isUpdated = true
 				break
-            }
+			}
 
 			if (isUpdated) {
 				const t: Nullable<T> = {} as T
@@ -639,10 +639,10 @@ export class SQLTable<T extends Schema = any> {
 
 				updatedRows.push(t)
 			}
-        }
+		}
 
-        return updatedRows
-    }
+		return updatedRows
+	}
 
 	/**
 	 * Inserts new rows into the table, or updates them if a conflict occurs on the specified key
@@ -759,9 +759,9 @@ export class SQLDatabase {
 	private _name: string
 
 	/**
-     * Creates a new SQLDatabase instance and links the provided tables together.
-     * @param tables - The table instances to include in the database.
-     */
+	 * Creates a new SQLDatabase instance and links the provided tables together.
+	 * @param tables - The table instances to include in the database.
+	 */
 	constructor(name: string, ...tables: SQLTable[]) {
 		this._name = name
 		for (const table of tables) {
@@ -779,19 +779,19 @@ export class SQLDatabase {
 
 	/**
 	 * Gets an array of all table names registered in the database.
-     * @returns {string[]}
-     */
+	 * @returns {string[]}
+	 */
 	get tableNames(): string[] {
-        return Array.from(this._tables.keys())
-    }
+		return Array.from(this._tables.keys())
+	}
 
 	/**
-     * Retrieves a table instance by its name.
-     * @template T - The schema type of the requested table.
-     * @param name - The name of the table to retrieve.
-     * @returns The requested table, or undefined if not found.
-     */
-    getTable<T extends Schema = any>(name: string): SQLTable<T> | undefined {
-        return this._tables.get(name) as SQLTable<T> | undefined
-    }
+	 * Retrieves a table instance by its name.
+	 * @template T - The schema type of the requested table.
+	 * @param name - The name of the table to retrieve.
+	 * @returns The requested table, or undefined if not found.
+	 */
+	getTable<T extends Schema = any>(name: string): SQLTable<T> | undefined {
+		return this._tables.get(name) as SQLTable<T> | undefined
+	}
 }
