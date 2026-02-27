@@ -504,8 +504,8 @@ export class SQLTable<T extends Schema = any> {
      */
 	update(
         values: Nullable<Partial<T>>[],
-        where: (updatePayload: Nullable<Partial<T>>, oldRow: Nullable<T>) => boolean,
-        map?: (updatePayload: Nullable<Partial<T>>, oldRow: Nullable<T>) => Nullable<Partial<T>>
+        where: (payload: Nullable<Partial<T>>, oldRow: Nullable<T>) => boolean,
+        map?: (payload: Nullable<Partial<T>>, oldRow: Nullable<T>) => Nullable<Partial<T>>
     ): Nullable<T>[] {
         if (this._rows.length === 0 || values.length === 0) {
             return []
@@ -654,7 +654,8 @@ export class SQLTable<T extends Schema = any> {
 	insert(
 		values: Nullable<Partial<T>> | Nullable<Partial<T>>[],
 		conflictKey?: keyof T,
-		onConflict?: (payload: Nullable<Partial<T>>, oldRow: Nullable<T>) => boolean
+		onConflict?: (payload: Nullable<Partial<T>>, oldRow: Nullable<T>) => boolean,
+		onUpdateMap?: (payload: Nullable<Partial<T>>, oldRow: Nullable<T>) => Nullable<Partial<T>>
 	): Nullable<T>[] {
 		const rowsToInsert = Array.isArray(values) ? values : [values]
 		const insertedRows: Nullable<T>[] = []
@@ -690,7 +691,7 @@ export class SQLTable<T extends Schema = any> {
 
 				matchedConflictValues.add(payloadValue)
 				return onConflict?.(payload, oldRow) ?? true
-			})
+			}, onUpdateMap)
 
 			insertedRows.push(...updatedRows)
 			itemsToInsert = rowsToInsert.filter(v =>
