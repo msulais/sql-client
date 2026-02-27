@@ -676,22 +676,23 @@ export class SQLTable<T extends Schema = any> {
 
 			const matchedConflictValues = new Set<any>()
 			const updatedRows = this.update(potentialUpdates, (payload, oldRow) => {
-				const payloadValue = payload[conflictKey]
-				const oldRowValue = oldRow[conflictKey]
+				const key_new = payload[conflictKey]
+				const key_old = oldRow[conflictKey]
 				if (
-					oldRowValue === null
+					key_old === null
 					|| (
 						oldRow instanceof Date
-						&& payloadValue instanceof Date
-						&& oldRow.getTime() !== payloadValue.getTime()
+						&& key_new instanceof Date
+						&& oldRow.getTime() !== key_new.getTime()
 					)
-					|| oldRowValue !== payloadValue
+					|| key_old !== key_new
+					|| !(onConflict?.(payload, oldRow) ?? true)
 				) {
 					return false
 				}
 
-				matchedConflictValues.add(payloadValue)
-				return onConflict?.(payload, oldRow) ?? true
+				matchedConflictValues.add(key_new)
+				return true
 			}, onUpdateMap)
 
 			insertedRows.push(...updatedRows)
