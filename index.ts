@@ -182,7 +182,7 @@ export class SQLTable<T extends Schema = any> {
      */
 	query<JoinedTable extends Schema = T, CurrentTable extends Schema = T>(options?: {
 		limit?: number
-		where?: (row: Nullable<T>) => boolean
+		where?: (value: Nullable<T>) => boolean
 		orderBy?: keyof CurrentTable
 		orderDirection?: 'ASC' | 'DESC'
 		join?: {
@@ -409,7 +409,7 @@ export class SQLTable<T extends Schema = any> {
      */
 	delete(options?: {
 		limit?: number
-		where?: (row: Nullable<T>) => boolean
+		where?: (value: Nullable<T>) => boolean
 	}): Nullable<T>[] {
 		const maxDeletes = options?.limit ?? Infinity
 		let deletedCount = 0
@@ -499,13 +499,13 @@ export class SQLTable<T extends Schema = any> {
      * Manages string pool references when string columns are updated.
      * @param values - An array of update payloads.
      * @param where - Condition determining if a row should be updated with a payload.
-	 * @param map - Optional function to transform the update payload based on the existing row data before applying the update
+	 * @param map - Optional function to transform the update payload based on the existing row data before applying the update. Skipped if `where` return `false`.
      * @returns The updates items.
      */
 	update(
         values: Nullable<Partial<T>>[],
-        where: (payload: Nullable<Partial<T>>, oldRow: Nullable<T>) => boolean,
-        map?: (payload: Nullable<Partial<T>>, oldRow: Nullable<T>) => Nullable<Partial<T>>
+        where: (newValue: Nullable<Partial<T>>, oldValue: Nullable<T>) => boolean,
+        map?: (newValue: Nullable<Partial<T>>, oldValue: Nullable<T>) => Nullable<Partial<T>>
     ): Nullable<T>[] {
         if (this._rows.length === 0 || values.length === 0) {
             return []
@@ -649,13 +649,14 @@ export class SQLTable<T extends Schema = any> {
 	 * @param values - A single row object or an array of row objects to insert
 	 * @param conflictKey - Optional column name to check for conflicts (UPSERT)
 	 * @param onConflict - Optional callback to determine if the update should proceed when a conflict is found
+	 * @param onUpdateMap - Optional callback to transform the update payload based on the existing row data before applying the update. Skipped if `onConflict` return `false`.
 	 * @returns An array of the newly inserted or updated hydrated row objects
 	 */
 	insert(
 		values: Nullable<Partial<T>> | Nullable<Partial<T>>[],
 		conflictKey?: keyof T,
-		onConflict?: (payload: Nullable<Partial<T>>, oldRow: Nullable<T>) => boolean,
-		onUpdateMap?: (payload: Nullable<Partial<T>>, oldRow: Nullable<T>) => Nullable<Partial<T>>
+		onConflict?: (newValue: Nullable<Partial<T>>, oldValue: Nullable<T>) => boolean,
+		onUpdateMap?: (newValue: Nullable<Partial<T>>, oldValue: Nullable<T>) => Nullable<Partial<T>>
 	): Nullable<T>[] {
 		const rowsToInsert = Array.isArray(values) ? values : [values]
 		const insertedRows: Nullable<T>[] = []
