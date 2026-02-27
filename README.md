@@ -11,19 +11,6 @@ A lightweight, in-memory SQL-like database system that run in browser and node j
 * **Relational Power:** Supports complex nested-loop `JOIN`s across multiple tables.
 * **Fully Typed:** Built-in generic types for fantastic developer experience and autocomplete.
 
-## 📦 Installation
-
-```bash
-# Using npm
-npm install sql-client
-
-# Using pnpm
-pnpm add sql-client
-
-# Using JSR
-npx jsr add @biru/sql-client
-```
-
 ## 📝 Usage Example
 
 The following example demonstrates how to define tables, initialize the database, insert records, and query relational data using a join.
