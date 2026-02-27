@@ -668,7 +668,7 @@ export class SQLTable<T extends Schema = any> {
 
 			const potentialUpdates = rowsToInsert.filter(v =>
 				v[conflictKey] !== undefined
-				|| v[conflictKey] !== null
+				&& v[conflictKey] !== null
 			)
 			if (potentialUpdates.length <= 0) {
 				break UPDATE
@@ -686,13 +686,12 @@ export class SQLTable<T extends Schema = any> {
 						&& oldRow.getTime() !== key_new.getTime()
 					)
 					|| key_old !== key_new
-					|| !(onConflict?.(payload, oldRow) ?? true)
 				) {
 					return false
 				}
 
 				matchedConflictValues.add(key_new)
-				return true
+				return onConflict?.(payload, oldRow) ?? true
 			}, onUpdateMap)
 
 			insertedRows.push(...updatedRows)
