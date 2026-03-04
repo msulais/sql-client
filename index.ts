@@ -30,6 +30,12 @@ export type ColumnProperties<T extends Record<ColumnName, any>> = ({ name: keyof
 	| { type: DataTypes.Number, autoIncrease?: boolean }
 ))
 
+/** Join array */
+export type MergeJoins<T, J extends any[]> = (J extends [infer First, ...infer Rest]
+    ? First & MergeJoins<T, Rest>
+    : T
+)
+
 // (2 string + 3 (8*3 Bytes) number) memory = each string
 const SHARED_STRING = new Map<StringId, [value: string, lifetime: number]>()
 const SHARED_STRING_ID = new Map<string, StringId>()
@@ -170,7 +176,7 @@ export class SQLTable<T extends Schema = any> {
 
 	/**
 	 * Queries the table for data, supporting filtering, joins, sorting, and limits.
-	 * @template JoinedTable - The resulting type when joining with another table.
+	 * @template JoinedTables - The resulting type when joining with another table.
 	 * @param [options] - The query configuration options.
 	 * @param [options.limit] - The maximum number of rows to return.
 	 * @param [options.where] - A filter function evaluated against each row.
@@ -180,30 +186,33 @@ export class SQLTable<T extends Schema = any> {
 	 * @param [options.columns] - Specific columns to select and distinct flags.
 	 * @returns An array of hydrated row objects matching the query.
 	 */
-	query<JoinedTable extends Schema = T, CurrentTable extends Schema = T>(options?: {
-		limit?: number
-		where?: (value: Nullable<T>) => boolean
-		orderBy?: keyof CurrentTable
-		orderDirection?: 'ASC' | 'DESC'
-		join?: {
+	query<
+        JoinedTables extends Schema[] = [],
+        SelectedCols extends keyof MergeJoins<T, JoinedTables> = keyof MergeJoins<T, JoinedTables>
+    >(options?: {
+        limit?: number
+        where?: (row: Nullable<T>) => boolean
+        orderBy?: SelectedCols
+        orderDirection?: 'ASC' | 'DESC'
+        join?: {[K in keyof JoinedTables]: {
 			table: TableName
-			columns?: (keyof JoinedTable)[]
-			on: (currentTableValue: Nullable<T>, joinTableValue: Nullable<JoinedTable>) => boolean
-		}[]
-		columns?: {
-			name: keyof CurrentTable,
-			distinct?: boolean
-		}[]
-	}): Nullable<CurrentTable & JoinedTable>[] {
-		const results: Nullable<CurrentTable & JoinedTable>[] = []
+			columns?: (keyof JoinedTables[K])[]
+			on: (currentValue: Nullable<T>, joinTableValue: Nullable<JoinedTables[K]>) => boolean
+		}}
+        columns?: {
+            name: keyof T,
+            distinct?: boolean
+        }[]
+    }): Pick<Nullable<MergeJoins<T, JoinedTables>>, SelectedCols>[] {
+		const results: any[] = []
 		const maxRows = options?.limit ?? Infinity
 		const requestedColumns = new Set(
-			options?.columns?.map(col => col.name) ?? (this._columnIndexes.keys() as unknown as (keyof CurrentTable)[])
-		)
+            options?.columns?.map(col => col.name as string) ?? this._columnIndexes.keys()
+        )
 		const distinctColumnNames = new Set(
 			options?.columns?.filter(col => col.distinct).map(col => col.name)
 		)
-		const seenDistinctValues = new Map<keyof CurrentTable, Set<number>>()
+		const seenDistinctValues = new Map<keyof T, Set<number>>()
 		const hydrate = (
 			targetTable: SQLTable<any>,
 			rawRow: (number | null)[],
@@ -309,7 +318,7 @@ export class SQLTable<T extends Schema = any> {
 
 			const baseHydratedRow = hydrate(this, currentRawRow, requestedColumns as Set<string>)
 			if (!options?.join || options.join.length <= 0) {
-				results.push(baseHydratedRow as (CurrentTable & JoinedTable))
+				results.push(baseHydratedRow as (T & JoinedTables))
 				continue
 			}
 
@@ -327,7 +336,7 @@ export class SQLTable<T extends Schema = any> {
 					joinConfig.columns as string[] ?? joinedTable._columnIndexes.keys()
 				)
 				let currentJoinRawRow: (number | null)[] = []
-				const lazyJoinProxy = createLazyProxy(joinedTable, () => currentJoinRawRow) as JoinedTable
+				const lazyJoinProxy = createLazyProxy(joinedTable, () => currentJoinRawRow)
 				for (let jRowIndex = 0; jRowIndex < joinedTable._rows.length; jRowIndex++) {
 					if (!joinedTable._rows[jRowIndex]) {
 						continue
@@ -352,7 +361,7 @@ export class SQLTable<T extends Schema = any> {
 					continue
 				}
 
-				results.push(finalCombinedRow as (CurrentTable & JoinedTable))
+				results.push(finalCombinedRow as (T & JoinedTables))
 			}
 		}
 
