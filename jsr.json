@@ -1,6 +1,6 @@
 {
   "name": "@biru/sql-client",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "license": "MIT",
   "exports": "./index.ts"
 }

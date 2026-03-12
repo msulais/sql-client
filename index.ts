@@ -574,11 +574,11 @@ export class SQLTable<T extends Schema = any> {
 
 					const newValue = finalPayload[colName as keyof typeof finalPayload]
 					const oldRawVal = currentRawRow[colIdx]
-					if (oldRawVal === undefined) {
+					if (oldRawVal === undefined || newValue === undefined) {
 						continue
 					}
 
-					if (newValue === null || newValue === undefined) {
+					if (newValue === null) {
 						if (props.type === DataTypes.String && oldRawVal !== null) {
 							deleteString(oldRawVal)
 						}
