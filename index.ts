@@ -27,7 +27,7 @@ export type Schema = Record<ColumnName, number | string | Date | null>
 /** Column properties */
 export type ColumnProperties<T extends Record<ColumnName, any>> = ({ name: keyof T } & (
 	{ type: DataTypes.String | DataTypes.Datetime }
-	| { type: DataTypes.Number, autoIncrease?: boolean }
+	| { type: DataTypes.Number, autoIncrement?: boolean }
 ))
 
 /** Join array */
@@ -138,9 +138,9 @@ export class SQLTable<T extends Schema = any> {
 	 */
 	get schema(): Record<string, {
 		type: string;
-		autoIncrease?: boolean;
+		autoIncrement?: boolean;
 	}> {
-		const schemaInfo: Record<string, { type: string, autoIncrease?: boolean }> = {}
+		const schemaInfo: Record<string, { type: string, autoIncrement?: boolean }> = {}
 		for (const [colName, property] of this._columnProperties) {
 			let typeName = ''
 			switch (property.type) {
@@ -151,8 +151,8 @@ export class SQLTable<T extends Schema = any> {
 
 			schemaInfo[colName as string] = {
 				type: typeName,
-				// Only attach autoIncrease if it's true
-				...((property as any).autoIncrease ? { autoIncrease: true } : {})
+				// Only attach autoIncrement if it's true
+				...((property as any).autoIncrement ? { autoIncrement: true } : {})
 			}
 		}
 
@@ -609,7 +609,7 @@ export class SQLTable<T extends Schema = any> {
 						const numValue = newValue as number
 						currentRawRow[colIdx] = numValue
 						if (
-							(props as any).autoIncrease
+							(props as any).autoIncrement
 							&& numValue > (this._autoIncrement[colIdx] ?? 0)
 						) {
 							this._autoIncrement[colIdx] = numValue
@@ -721,7 +721,7 @@ export class SQLTable<T extends Schema = any> {
 				if (incomingValue === undefined || incomingValue === null) {
 					if (
 						property.type === DataTypes.Number
-						&& (property as any).autoIncrease
+						&& (property as any).autoIncrement
 						&& typeof this._autoIncrement[colIndex] === 'number'
 					) {
 						this._autoIncrement[colIndex] += 1

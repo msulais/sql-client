@@ -24,13 +24,13 @@ type PostSchema = { id: number; authorId: number; title: string };
 
 // 2. Create table instances
 const usersTable = new SQLTable<UserSchema>('users', [
-    { name: 'id', type: DataTypes.Number, autoIncrease: true },
+    { name: 'id', type: DataTypes.Number, autoIncrement: true },
     { name: 'name', type: DataTypes.String },
     { name: 'createdAt', type: DataTypes.Datetime }
 ]);
 
 const postsTable = new SQLTable<PostSchema>('posts', [
-    { name: 'id', type: DataTypes.Number, autoIncrease: true },
+    { name: 'id', type: DataTypes.Number, autoIncrement: true },
     { name: 'authorId', type: DataTypes.Number },
     { name: 'title', type: DataTypes.String }
 ]);
@@ -70,6 +70,92 @@ console.log(alicePosts);
 
 // This is not needed. But you can automatically connect all table.
 const db = new SQLDatabase(usersTable, postsTable);
+```
+
+## ⚠️ `null` vs `undefined`
+
+Every value in `sql-client` package always nullable. So `null` is always possible. If you set column
+value to `undefined`, it will either ignored or set to `null` or auto increment number.
+
+* `update()` will ignore `undefined` value so you can update only what you need.
+* `insert()` will set `undefined` value as `null` or auto-increment number (if set).
+
+```ts
+import { SQLTable, DataTypes } from 'sql-client'
+
+type User = {
+    id: number
+    name: string
+    age: number
+}
+
+const table = new SQLTable<User>('users', [
+    { name: 'id'  , type: DataTypes.Number, autoIncrement: true },
+    { name: 'name', type: DataTypes.String },
+    { name: 'age' , type: DataTypes.Number }
+])
+
+table.insert([
+    {
+        id: null, // auto increment
+        name: undefined // become: null
+        // [age] become null
+    },
+    {
+        id: undefined, // auto increment
+        name: null, // keep null
+        age: undefined, // become null
+    },
+    {
+        id: 10,
+        name: 'Irfan',
+        age: 22
+    },
+    {
+        id: 11,
+        name: 'Ryan',
+        // [age] become null
+    },
+    {
+        id: null, // auto increment
+        name: 'Kevin',
+        age: 50
+    }
+])
+
+// QUERY AFTER INSERT:
+// { id:  1, name: null   , age: null }
+// { id:  2, name: null   , age: null }
+// { id: 10, name: 'Irfan', age: 22   }
+// { id: 11, name: 'Ryan' , age: null }
+// { id: 12, name: 'Kevin', age: 50   }
+
+table.update([
+    {
+        id: 10,
+        name: 'John'
+        // [age] ignored
+    },
+    {
+        id: 11,
+        name: undefined, // ignored
+        age: 14
+    },
+    {
+        id: 12,
+        name: null, // not ignored
+        // [age] ignored
+    }
+], (newValue, oldValue) => {
+    return oldValue.id !== null && newValue.id === oldValue.id
+})
+
+// QUERY AFTER UPDATE:
+// { id:  1, name: null  , age: null }
+// { id:  2, name: null  , age: null }
+// { id: 10, name: 'John', age: 22   }
+// { id: 11, name: 'Ryan', age: 14   }
+// { id: 12, name: null  , age: 50   }
 ```
 
 ## 📄 License
