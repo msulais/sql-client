@@ -192,7 +192,7 @@ export class SQLTable<T extends Schema = any> {
 	>(options?: {
 		limit?: number
 		where?: (row: Nullable<T>) => boolean
-		orderBy?: SelectedCols
+		orderBy?: keyof MergeJoins<T, JoinedTables>
 		orderDirection?: 'ASC' | 'DESC'
 		join?: {[K in keyof JoinedTables]: {
 			table: TableName
