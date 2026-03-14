@@ -7,14 +7,14 @@ describe('Custom In-Memory SQL Engine', () => {
 	let db: SQLDatabase
 	beforeEach(() => {
 		usersTable = new SQLTable('users', [
-			{ name: 'id', type: DataTypes.Number, autoIncrease: true },
+			{ name: 'id', type: DataTypes.Number, autoIncrement: true },
 			{ name: 'username', type: DataTypes.String },
 			{ name: 'role', type: DataTypes.String },
 			{ name: 'score', type: DataTypes.Number } // No auto-increase
 		])
 
 		postsTable = new SQLTable('posts', [
-			{ name: 'id', type: DataTypes.Number, autoIncrease: true },
+			{ name: 'id', type: DataTypes.Number, autoIncrement: true },
 			{ name: 'authorId', type: DataTypes.Number },
 			{ name: 'title', type: DataTypes.String }
 		])
@@ -27,7 +27,7 @@ describe('Custom In-Memory SQL Engine', () => {
 			expect(db.tableNames).toEqual(['users', 'posts'])
 			expect(usersTable.rowCount).toBe(0)
 			expect(usersTable.schema).toEqual({
-				id: { type: 'Number', autoIncrease: true },
+				id: { type: 'Number', autoIncrement: true },
 				username: { type: 'String' },
 				role: { type: 'String' },
 				score: { type: 'Number' }
@@ -160,6 +160,21 @@ describe('Custom In-Memory SQL Engine', () => {
 				{ username: 'NullBoy', role: null, score: null }
 			])
 		})
+
+		it('should evaluate ORDER BY across the entire dataset before applying LIMIT', () => {
+            usersTable.insert({ username: 'Dave', role: 'User', score: 80 })
+            const top2 = usersTable.query({
+                orderBy: 'score',
+                orderDirection: 'DESC',
+                limit: 2
+            })
+
+            expect(top2.length).toBe(2)
+            expect(top2[0]?.username).toBe('Alice')
+            expect(top2[0]?.score).toBe(100)
+            expect(top2[1]?.username).toBe('Dave')
+            expect(top2[1]?.score).toBe(80)
+        })
 
 		it('should respect limits and DISTINCT clauses', () => {
 			const distinctRoles = usersTable.query({
@@ -316,7 +331,7 @@ describe('Custom In-Memory SQL Engine', () => {
 
 		it('should execute complex Date methods inside the Lazy Proxy', () => {
 			const eventsTable = new SQLTable('events', [
-				{ name: 'id', type: DataTypes.Number, autoIncrease: true },
+				{ name: 'id', type: DataTypes.Number, autoIncrement: true },
 				{ name: 'eventName', type: DataTypes.String },
 				{ name: 'createdAt', type: DataTypes.Datetime }
 			])

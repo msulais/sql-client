@@ -181,34 +181,35 @@ export class SQLTable<T extends Schema = any> {
 	 * @param [options.limit] - The maximum number of rows to return.
 	 * @param [options.where] - A filter function evaluated against each row.
 	 * @param [options.orderBy] - The column name to sort the results by.
-	 * @param [options.orderMode] - The direction of the sort.
+	 * @param [options.orderDirection] - The direction of the sort.
 	 * @param [options.join] Join configurations.
 	 * @param [options.columns] - Specific columns to select and distinct flags.
 	 * @returns An array of hydrated row objects matching the query.
 	 */
 	query<
-        JoinedTables extends Schema[] = [],
-        SelectedCols extends keyof MergeJoins<T, JoinedTables> = keyof MergeJoins<T, JoinedTables>
-    >(options?: {
-        limit?: number
-        where?: (row: Nullable<T>) => boolean
-        orderBy?: SelectedCols
-        orderDirection?: 'ASC' | 'DESC'
-        join?: {[K in keyof JoinedTables]: {
+		JoinedTables extends Schema[] = [],
+		SelectedCols extends keyof MergeJoins<T, JoinedTables> = keyof MergeJoins<T, JoinedTables>
+	>(options?: {
+		limit?: number
+		where?: (row: Nullable<T>) => boolean
+		orderBy?: SelectedCols
+		orderDirection?: 'ASC' | 'DESC'
+		join?: {[K in keyof JoinedTables]: {
 			table: TableName
 			columns?: (keyof JoinedTables[K])[]
 			on: (currentValue: Nullable<T>, joinTableValue: Nullable<JoinedTables[K]>) => boolean
 		}}
-        columns?: {
-            name: keyof T,
-            distinct?: boolean
-        }[]
-    }): Pick<Nullable<MergeJoins<T, JoinedTables>>, SelectedCols>[] {
+		columns?: {
+			name: keyof T,
+			distinct?: boolean
+		}[]
+	}): Pick<Nullable<MergeJoins<T, JoinedTables>>, SelectedCols>[] {
 		const results: any[] = []
 		const maxRows = options?.limit ?? Infinity
+		const hasOrderBy = !!options?.orderBy
 		const requestedColumns = new Set(
-            options?.columns?.map(col => col.name as string) ?? this._columnIndexes.keys()
-        )
+			options?.columns?.map(col => col.name as string) ?? this._columnIndexes.keys()
+		)
 		const distinctColumnNames = new Set(
 			options?.columns?.filter(col => col.distinct).map(col => col.name)
 		)
@@ -278,7 +279,7 @@ export class SQLTable<T extends Schema = any> {
 		let currentRawRow: (number | null)[] = []
 		const lazyRowProxy = createLazyProxy(this, () => currentRawRow) as T
 		ROW_LOOP: for (let rowIndex = 0; rowIndex < this._rows.length; rowIndex++) {
-			if (results.length >= maxRows) {
+			if (!hasOrderBy && results.length >= maxRows) {
 				break ROW_LOOP
 			}
 
@@ -319,6 +320,10 @@ export class SQLTable<T extends Schema = any> {
 			const baseHydratedRow = hydrate(this, currentRawRow, requestedColumns as Set<string>)
 			if (!options?.join || options.join.length <= 0) {
 				results.push(baseHydratedRow as (T & JoinedTables))
+				if (!hasOrderBy && results.length >= maxRows) {
+					break ROW_LOOP
+				}
+
 				continue
 			}
 
@@ -357,11 +362,10 @@ export class SQLTable<T extends Schema = any> {
 			}
 
 			for (const finalCombinedRow of combinedRows) {
-				if (results.length >= maxRows) {
-					continue
-				}
-
 				results.push(finalCombinedRow as (T & JoinedTables))
+				if (!hasOrderBy && results.length >= maxRows) {
+					break ROW_LOOP
+				}
 			}
 		}
 
@@ -405,7 +409,8 @@ export class SQLTable<T extends Schema = any> {
 			return isDesc ? -comparison : comparison
 		})
 
-		return results
+		// Apply limit AFTER sorting
+		return results.length > maxRows ? results.slice(0, maxRows) : results
 	}
 
 	/**
