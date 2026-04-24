@@ -75,7 +75,7 @@ const db = new SQLDatabase(usersTable, postsTable);
 ## ⚠️ `null` vs `undefined`
 
 Every value in `sql-client` package always nullable. So `null` is always possible. If you set column
-value to `undefined`, it will either ignored or set to `null` or auto increment number.
+value to `undefined`, it will either *ignored* or set to *`null`* or *auto increment number*.
 
 * `update()` will ignore `undefined` value so you can update only what you need.
 * `insert()` will set `undefined` value as `null` or auto-increment number (if set).
