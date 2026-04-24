@@ -485,17 +485,14 @@ export class SQLTable<T extends Schema = any> {
 
 				switch (property.type) {
 				case DataTypes.Number:
-					// @ts-ignore
-					t[colName] = rawVal;
+					t[colName] = rawVal as any;
 					break
 				case DataTypes.String:
-					// @ts-ignore
-					t[colName] = SHARED_STRING.get(rawVal)?.[0] ?? null
+					t[colName] = SHARED_STRING.get(rawVal)?.[0] ?? null as any
 					deleteString(rawVal as number)
 					break
 				case DataTypes.Datetime:
-					// @ts-ignore
-					t[colName] = new Date(rawVal as number)
+					t[colName] = new Date(rawVal as number) as any
 					break
 				}
 			}
