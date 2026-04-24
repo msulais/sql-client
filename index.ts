@@ -372,8 +372,8 @@ export class SQLTable<T extends Schema = any> {
 		const sortByColumn = options?.orderBy
 		if (
 			!sortByColumn
-			|| !this._columnIndexes.has(sortByColumn as keyof T)
-			|| !requestedColumns.has(sortByColumn as string)
+			&& !this._columnIndexes.has(sortByColumn as keyof T)
+			&& !requestedColumns.has(sortByColumn as string)
 		) {
 			return results
 		}
@@ -400,7 +400,7 @@ export class SQLTable<T extends Schema = any> {
 				comparison = valA.localeCompare(valB)
 			}
 			else if (valA instanceof Date && valB instanceof Date) {
-				comparison = valA.getTime() - valB.getTime()
+				comparison = valB.getTime() - valA.getTime()
 			}
 			else {
 				comparison = (valA as number) - (valB as number)
