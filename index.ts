@@ -175,10 +175,11 @@ export class SQLTable<T extends Schema = any> {
 	}
 
 	/**
-	 * Queries the table for data, supporting filtering, joins, sorting, and limits.
+	 * Queries the table for data, supporting filtering, joins, sorting, limits, and offsets.
 	 * @template JoinedTables - The resulting type when joining with another table.
 	 * @param [options] - The query configuration options.
 	 * @param [options.limit] - The maximum number of rows to return.
+	 * @param [options.offset] - The number of rows to skip before starting to return results.
 	 * @param [options.where] - A filter function evaluated against each row.
 	 * @param [options.orderBy] - The column name to sort the results by.
 	 * @param [options.orderDirection] - The direction of the sort.
@@ -191,6 +192,7 @@ export class SQLTable<T extends Schema = any> {
 		SelectedCols extends keyof MergeJoins<T, JoinedTables> = keyof MergeJoins<T, JoinedTables>
 	>(options?: {
 		limit?: number
+		offset?: number
 		where?: (row: Nullable<T>) => boolean
 		orderBy?: keyof MergeJoins<T, JoinedTables>
 		orderDirection?: 'ASC' | 'DESC'
@@ -205,7 +207,10 @@ export class SQLTable<T extends Schema = any> {
 		}[]
 	}): Pick<Nullable<MergeJoins<T, JoinedTables>>, SelectedCols>[] {
 		const results: any[] = []
-		const maxRows = options?.limit ?? Infinity
+		const limit = options?.limit ?? Infinity
+		const offset = options?.offset ?? 0
+		const maxLimit = limit === Infinity ? Infinity : (limit + offset)
+
 		const hasOrderBy = !!options?.orderBy
 		const requestedColumns = new Set(
 			options?.columns?.map(col => col.name as string) ?? this._columnIndexes.keys()
@@ -279,7 +284,7 @@ export class SQLTable<T extends Schema = any> {
 		let currentRawRow: (number | null)[] = []
 		const lazyRowProxy = createLazyProxy(this, () => currentRawRow) as T
 		ROW_LOOP: for (let rowIndex = 0; rowIndex < this._rows.length; rowIndex++) {
-			if (!hasOrderBy && results.length >= maxRows) {
+			if (!hasOrderBy && results.length >= maxLimit) {
 				break ROW_LOOP
 			}
 
@@ -320,7 +325,7 @@ export class SQLTable<T extends Schema = any> {
 			const baseHydratedRow = hydrate(this, currentRawRow, requestedColumns as Set<string>)
 			if (!options?.join || options.join.length <= 0) {
 				results.push(baseHydratedRow as (T & JoinedTables))
-				if (!hasOrderBy && results.length >= maxRows) {
+				if (!hasOrderBy && results.length >= maxLimit) {
 					break ROW_LOOP
 				}
 
@@ -363,54 +368,53 @@ export class SQLTable<T extends Schema = any> {
 
 			for (const finalCombinedRow of combinedRows) {
 				results.push(finalCombinedRow as (T & JoinedTables))
-				if (!hasOrderBy && results.length >= maxRows) {
+				if (!hasOrderBy && results.length >= maxLimit) {
 					break ROW_LOOP
 				}
 			}
 		}
 
 		const sortByColumn = options?.orderBy
-		if (
-			!sortByColumn
-			&& !this._columnIndexes.has(sortByColumn as keyof T)
-			&& !requestedColumns.has(sortByColumn as string)
-		) {
+		const canSort = sortByColumn && (this._columnIndexes.has(sortByColumn as keyof T) || requestedColumns.has(sortByColumn as string))
+		if (canSort) {
+			const isDesc = options?.orderDirection === 'DESC'
+			results.sort((a, b) => {
+				const valA = a[sortByColumn as keyof typeof a]
+				const valB = b[sortByColumn as keyof typeof b]
+				if (valA == null && valB == null) {
+					return 0
+				}
+
+				if (valA == null) {
+					return isDesc ? 1 : -1
+				}
+
+				if (valB == null) {
+					return isDesc ? -1 : 1
+				}
+
+				let comparison = 0
+				if (typeof valA === 'string' && typeof valB === 'string') {
+					comparison = valA.localeCompare(valB)
+				}
+				else if (valA instanceof Date && valB instanceof Date) {
+					comparison = valB.getTime() - valA.getTime()
+				}
+				else {
+					comparison = (valA as number) - (valB as number)
+				}
+
+				return isDesc ? -comparison : comparison
+			})
+		}
+
+		if (limit === Infinity && offset === 0) {
 			return results
 		}
 
-		// SORT RESULTS
-		const isDesc = options?.orderDirection === 'DESC'
-		results.sort((a, b) => {
-			const valA = a[sortByColumn as keyof typeof a]
-			const valB = b[sortByColumn as keyof typeof b]
-			if (valA == null && valB == null) {
-				return 0
-			}
-
-			if (valA == null) {
-				return isDesc ? 1 : -1
-			}
-
-			if (valB == null) {
-				return isDesc ? -1 : 1
-			}
-
-			let comparison = 0
-			if (typeof valA === 'string' && typeof valB === 'string') {
-				comparison = valA.localeCompare(valB)
-			}
-			else if (valA instanceof Date && valB instanceof Date) {
-				comparison = valB.getTime() - valA.getTime()
-			}
-			else {
-				comparison = (valA as number) - (valB as number)
-			}
-
-			return isDesc ? -comparison : comparison
-		})
-
-		// Apply limit AFTER sorting
-		return results.length > maxRows ? results.slice(0, maxRows) : results
+		return limit === Infinity
+			? results.slice(offset)
+			: results.slice(offset, offset + limit)
 	}
 
 	/**

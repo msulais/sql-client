@@ -385,4 +385,69 @@ describe('Custom In-Memory SQL Engine', () => {
 			expect(check[0]?.username).toBe('StableString')
 		})
 	})
+
+	describe('8. Limit & Offset Pagination Edge Cases', () => {
+		beforeEach(() => {
+			// Ensure a clean slate of ordered data for predictable pagination testing
+			usersTable.insert([
+				{ username: 'User1', score: 10 }, // Index 0
+				{ username: 'User2', score: 20 }, // Index 1
+				{ username: 'User3', score: 30 }, // Index 2
+				{ username: 'User4', score: 40 }, // Index 3
+				{ username: 'User5', score: 50 }  // Index 4
+			])
+		})
+
+		it('should skip the specified number of rows when only offset is provided', () => {
+			const results = usersTable.query({ offset: 2 })
+
+			// Should skip User1 and User2
+			expect(results.length).toBe(3)
+			expect(results[0]?.username).toBe('User3')
+			expect(results[2]?.username).toBe('User5')
+		})
+
+		it('should slice a specific chunk when both offset and limit are used', () => {
+			// Skip 1, Take 2 -> Should get User2 and User3
+			const results = usersTable.query({ offset: 1, limit: 2 })
+
+			expect(results.length).toBe(2)
+			expect(results[0]?.username).toBe('User2')
+			expect(results[1]?.username).toBe('User3')
+		})
+
+		it('should apply offset AFTER sorting the dataset', () => {
+			// Sorted DESC: User5(50), User4(40), User3(30), User2(20), User1(10)
+			// Offset 2, Limit 2 -> Should skip top 2, and grab the next 2 (User3, User2)
+			const results = usersTable.query({
+				orderBy: 'score',
+				orderDirection: 'DESC',
+				offset: 2,
+				limit: 2
+			})
+
+			expect(results.length).toBe(2)
+			expect(results[0]?.username).toBe('User3') // Score 30
+			expect(results[1]?.username).toBe('User2') // Score 20
+		})
+
+		it('should return an empty array if offset exceeds the available dataset size', () => {
+			const results = usersTable.query({ offset: 100 })
+			expect(results.length).toBe(0)
+		})
+
+		it('should evaluate the WHERE clause correctly before applying offset', () => {
+			// Filter: scores > 15 -> User2, User3, User4, User5 (Total 4 rows)
+			// Offset 1, Limit 2 -> Should skip User2, and grab User3, User4
+			const results = usersTable.query({
+				where: r => (r.score as number) > 15,
+				offset: 1,
+				limit: 2
+			})
+
+			expect(results.length).toBe(2)
+			expect(results[0]?.username).toBe('User3')
+			expect(results[1]?.username).toBe('User4')
+		})
+	})
 })
