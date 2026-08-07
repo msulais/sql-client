@@ -15,9 +15,6 @@ export type Nullable<T> = {
 /** Column name (string) */
 export type ColumnName = string
 
-/** Table name (string) */
-export type TableName = string
-
 /** Table schema */
 export type Schema = Record<ColumnName, number | string | Date | null>
 

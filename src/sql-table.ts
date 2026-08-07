@@ -6,7 +6,6 @@ import {
 	type InferRow,
 	type InsertRow,
 	type MergeJoins,
-	type TableName,
 } from './types.js'
 
 type ColumnIndex = number
@@ -21,7 +20,6 @@ export class SQLTable<
 	T extends Schema = any,
 	const C extends ColumnsConfig<T> = ColumnsConfig<T>
 > {
-	private _name: TableName
 	private _columnProperties = new Map<keyof T, any>()
 	private _columnIndexes    = new Map<keyof T, ColumnIndex>()
 	private _autoIncrementCounters: number[] = []
@@ -29,11 +27,9 @@ export class SQLTable<
 
 	/**
 	 * Creates a new SQLTable instance.
-	 * @param name - The name of the table.
 	 * @param columns - The column definitions for the table.
 	 */
-	constructor(name: string, columns: C) {
-		this._name = name
+	constructor(columns: C) {
 
 		let i = 0
 		for (const key in columns) {
@@ -50,11 +46,6 @@ export class SQLTable<
 	// ---------------------------------------------------------------------------
 	// Public getters
 	// ---------------------------------------------------------------------------
-
-	/** Gets the name of the table. */
-	get name(): string {
-		return this._name
-	}
 
 	/** Gets an array of column names in the table, in column order. */
 	get columns(): string[] {

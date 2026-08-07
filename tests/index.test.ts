@@ -11,7 +11,7 @@ function makeUsers() {
 		username: string | null
 		role: string | null
 		score: number | null
-	}>('users', {
+	}>({
 		id:       { type: DataTypes.Number, autoIncrement: true },
 		username: { type: DataTypes.String,  nullable: true },
 		role:     { type: DataTypes.String,  nullable: true },
@@ -24,7 +24,7 @@ function makePosts() {
 		id: number
 		authorId: number
 		title: string
-	}>('posts', {
+	}>({
 		id:       { type: DataTypes.Number, autoIncrement: true },
 		authorId: { type: DataTypes.Number },
 		title:    { type: DataTypes.String },
@@ -36,7 +36,7 @@ function makeEvents() {
 		id: number
 		name: string
 		createdAt: Date
-	}>('events', {
+	}>({
 		id:        { type: DataTypes.Number,   autoIncrement: true },
 		name:      { type: DataTypes.String },
 		createdAt: { type: DataTypes.Datetime },
@@ -48,10 +48,6 @@ function makeEvents() {
 // ---------------------------------------------------------------------------
 
 describe('1. Introspection', () => {
-	it('reports the table name', () => {
-		expect(makeUsers().name).toBe('users')
-	})
-
 	it('reports columns in definition order', () => {
 		expect(makeUsers().columns).toEqual(['id', 'username', 'role', 'score'])
 	})

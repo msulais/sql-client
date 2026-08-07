@@ -33,13 +33,13 @@ import { SQLTable, DataTypes } from 'sql-client'
 type User = { id: number; name: string; createdAt: Date }
 type Post = { id: number; authorId: number; title: string }
 
-const users = new SQLTable<User>('users', {
+const users = new SQLTable<User>({
 	id:        { type: DataTypes.Number, autoIncrement: true },
 	name:      { type: DataTypes.String },
 	createdAt: { type: DataTypes.Datetime },
 })
 
-const posts = new SQLTable<Post>('posts', {
+const posts = new SQLTable<Post>({
 	id:       { type: DataTypes.Number, autoIncrement: true },
 	authorId: { type: DataTypes.Number },
 	title:    { type: DataTypes.String },
@@ -96,7 +96,7 @@ Use `nullable: true` to allow `null` values. Append `as const` to the column con
 ```ts
 type Row = { id: number; name: string | null; score: number }
 
-const table = new SQLTable<Row>('rows', {
+const table = new SQLTable<Row>({
 	id:    { type: DataTypes.Number, autoIncrement: true },
 	name:  { type: DataTypes.String, nullable: true },
 	score: { type: DataTypes.Number },
@@ -202,7 +202,7 @@ By default, columns cannot be `null`. Set `nullable: true` in the column config 
 ```ts
 type User = { id: number; name: string | null; age: number }
 
-const table = new SQLTable<User>('users', {
+const table = new SQLTable<User>({
 	id:   { type: DataTypes.Number, autoIncrement: true },
 	name: { type: DataTypes.String, nullable: true },
 	age:  { type: DataTypes.Number },
@@ -230,7 +230,6 @@ table.update(
 Each `SQLTable` exposes read-only metadata:
 
 ```ts
-table.name      // 'users'
 table.columns   // ['id', 'name', 'createdAt']
 table.rowCount  // 42
 table.schema    // { id: { type: 'Number', autoIncrement: true }, name: { type: 'String' }, ... }
