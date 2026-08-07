@@ -1,468 +1,632 @@
 import { DataTypes, SQLTable } from '../index'
 import { describe, beforeEach, it, expect } from 'vitest'
 
-type UserSchema = {
-	id: number;
-	username: string | null;
-	role: string | null;
-	score: number | null;
-};
+// ---------------------------------------------------------------------------
+// Helpers — factory functions so each test gets a clean table
+// ---------------------------------------------------------------------------
 
-type PostSchema = {
-	id: number;
-	authorId: number;
-	title: string;
-};
+function makeUsers() {
+	return new SQLTable<{
+		id: number
+		username: string | null
+		role: string | null
+		score: number | null
+	}>('users', {
+		id:       { type: DataTypes.Number, autoIncrement: true },
+		username: { type: DataTypes.String,  nullable: true },
+		role:     { type: DataTypes.String,  nullable: true },
+		score:    { type: DataTypes.Number,  nullable: true },
+	})
+}
 
-// 1. Define schemas outside to enable strict typing for the 'let' variables
-const userColumns = [
-	{ name: 'id', type: DataTypes.Number, autoIncrement: true },
-	{ name: 'username', type: DataTypes.String, nullable: true }, // Marked nullable for tests
-	{ name: 'role', type: DataTypes.String, nullable: true },     // Marked nullable for tests
-	{ name: 'score', type: DataTypes.Number, nullable: true }     // Marked nullable for tests
-] as const // <--- 'as const' enforces strict type inference
+function makePosts() {
+	return new SQLTable<{
+		id: number
+		authorId: number
+		title: string
+	}>('posts', {
+		id:       { type: DataTypes.Number, autoIncrement: true },
+		authorId: { type: DataTypes.Number },
+		title:    { type: DataTypes.String },
+	})
+}
 
-const postColumns = [
-	{ name: 'id', type: DataTypes.Number, autoIncrement: true },
-	{ name: 'authorId', type: DataTypes.Number },
-	{ name: 'title', type: DataTypes.String }
-] as const
+function makeEvents() {
+	return new SQLTable<{
+		id: number
+		name: string
+		createdAt: Date
+	}>('events', {
+		id:        { type: DataTypes.Number,   autoIncrement: true },
+		name:      { type: DataTypes.String },
+		createdAt: { type: DataTypes.Datetime },
+	})
+}
 
-describe('Custom In-Memory SQL Engine', () => {
-	// 2. Apply strict types to your variables
-	let usersTable: SQLTable<UserSchema, typeof userColumns>;
-	let postsTable: SQLTable<PostSchema, typeof postColumns>;
+// ---------------------------------------------------------------------------
+// 1. Introspection
+// ---------------------------------------------------------------------------
+
+describe('1. Introspection', () => {
+	it('reports the table name', () => {
+		expect(makeUsers().name).toBe('users')
+	})
+
+	it('reports columns in definition order', () => {
+		expect(makeUsers().columns).toEqual(['id', 'username', 'role', 'score'])
+	})
+
+	it('starts with rowCount = 0', () => {
+		expect(makeUsers().rowCount).toBe(0)
+	})
+
+	it('schema includes correct types and autoIncrement flag', () => {
+		expect(makeUsers().schema).toEqual({
+			id:       { type: 'Number', autoIncrement: true },
+			username: { type: 'String' },
+			role:     { type: 'String' },
+			score:    { type: 'Number' },
+		})
+	})
+
+	it('schema shows Datetime type', () => {
+		expect(makeEvents().schema.createdAt).toEqual({ type: 'Datetime' })
+	})
+})
+
+// ---------------------------------------------------------------------------
+// 2. Insert — basic behaviour
+// ---------------------------------------------------------------------------
+
+describe('2. Insert — basic', () => {
+	let users: ReturnType<typeof makeUsers>
+
+	beforeEach(() => { users = makeUsers() })
+
+	it('inserts a single row and returns it hydrated', () => {
+		const [row] = users.insert({ username: 'Alice', role: 'Admin', score: 100, id: -1 })
+		expect(row?.id).toBe(1)
+		expect(row?.username).toBe('Alice')
+		expect(row?.role).toBe('Admin')
+		expect(row?.score).toBe(100)
+		expect(users.rowCount).toBe(1)
+	})
+
+	it('inserts an array of rows and returns all hydrated', () => {
+		const rows = users.insert([{ id: -1, role: null, score: null, username: 'Alice' }, { id: -1, role: null, score: null, username: 'Bob' }])
+		expect(rows.length).toBe(2)
+		expect(users.rowCount).toBe(2)
+	})
+
+	it('stores null for nullable columns', () => {
+		const [row] = users.insert({ username: 'Eve', role: null, score: null, id: -1 })
+		expect(row?.role).toBeNull()
+		expect(row?.score).toBeNull()
+	})
+
+	it('stores and retrieves a Date value correctly', () => {
+		const events = makeEvents()
+		const date = new Date('2025-06-15T12:00:00Z')
+		const [row] = events.insert({ name: 'Launch', createdAt: date, id: -1 })
+		expect(row?.createdAt).toBeInstanceOf(Date)
+		expect((row?.createdAt as Date).toISOString()).toBe(date.toISOString())
+	})
+
+	it('preserves falsy-but-valid values: 0 and empty string', () => {
+		const [row] = users.insert({ username: '', score: 0, id: -1, role: null })
+		expect(row?.username).toBe('')
+		expect(row?.score).toBe(0)
+	})
+})
+
+// ---------------------------------------------------------------------------
+// 3. Insert — auto-increment
+// ---------------------------------------------------------------------------
+
+describe('3. Insert — auto-increment', () => {
+	let users: ReturnType<typeof makeUsers>
+
+	beforeEach(() => { users = makeUsers() })
+
+	it('auto-increments id when omitted', () => {
+		const [a, b] = users.insert([{ username: 'A', id: -1, role: null, score: null }, { username: 'B', id: -1, role: null, score: null }])
+		expect(a?.id).toBe(1)
+		expect(b?.id).toBe(2)
+	})
+
+	it('bumps the counter when an explicit id is given, so next auto = id + 1', () => {
+		users.insert({ id: 100, username: 'Charlie', role: null, score: null })
+		const [next] = users.insert({ username: 'Dave', id: -1, role: null, score: null })
+		expect(next?.id).toBe(101)
+	})
+
+	it('sentinel -1 triggers auto-increment on the very first insert', () => {
+		const [row] = users.insert({ id: -1, username: 'Sentinel', role: null, score: null })
+		expect(row?.id).toBe(1)
+	})
+
+	it('consecutive -1 inserts each produce the next id in sequence', () => {
+		const [a, b, c] = users.insert([
+			{ id: -1, username: 'A', role: null, score: null },
+			{ id: -1, username: 'B', role: null, score: null },
+			{ id: -1, username: 'C', role: null, score: null },
+		])
+		expect(a?.id).toBe(1)
+		expect(b?.id).toBe(2)
+		expect(c?.id).toBe(3)
+	})
+
+	it('sentinel after explicit id 50 yields 51', () => {
+		users.insert({ id: 50, username: 'High', role: null, score: null })
+		const [row] = users.insert({ id: -1, username: 'Next', role: null, score: null })
+		expect(row?.id).toBe(51)
+	})
+
+	it('any value below or same as the current counter is treated as a sentinel', () => {
+		users.insert({ id: 10, role: null, score: null, username: 'A' }) // counter → 10
+		const [row] = users.insert({ id: 5, role: null, score: null, username: 'B' }) // 5 < 10 → sentinel → 11
+		expect(row?.id).toBe(11)
+		const [row2] = users.insert({ id: 11, role: null, score: null, username: 'B' })
+		expect(row2?.id).toBe(12)
+	})
+})
+
+// ---------------------------------------------------------------------------
+// 4. Insert — UPSERT / conflict
+// ---------------------------------------------------------------------------
+
+describe('4. Insert — UPSERT', () => {
+	let users: ReturnType<typeof makeUsers>
+
+	beforeEach(() => { users = makeUsers() })
+
+	it('updates the existing row when conflictKey matches', () => {
+		users.insert({ id: -1, username: 'Alice', role: 'User', score: 10 })
+		const results = users.insert({ id: -1, username: 'Alice', role: 'Admin', score: 99 }, 'username')
+		expect(results.length).toBe(1)
+		expect(results[0]?.role).toBe('Admin')
+		expect(results[0]?.score).toBe(99)
+		expect(users.rowCount).toBe(1)
+	})
+
+	it('inserts as a new row when conflictKey has no match', () => {
+		const results = users.insert({ id: -1, role: null, username: 'Newcomer', score: 50 }, 'username')
+		expect(results.length).toBe(1)
+		expect(results[0]?.username).toBe('Newcomer')
+		expect(users.rowCount).toBe(1)
+	})
+
+	it('onConflict callback can veto an update (row stays unchanged)', () => {
+		users.insert([{ id: -1, role: null, username: 'P1', score: 100 }, { id: -1, role: null, username: 'P2', score: 100 }])
+
+		const results = users.insert(
+			[
+				{ id: -1, role: null, username: 'P1', score: 150 }, // higher → update allowed
+				{ id: -1, role: null, username: 'P2', score: 50  }, // lower  → vetoed
+			],
+			'username',
+			(payload, old) => (payload.score as number) > (old.score as number)
+		)
+
+		expect(results.length).toBe(1)
+		expect(results[0]?.username).toBe('P1')
+		expect(results[0]?.score).toBe(150)
+
+		const p2 = users.query({ where: r => r.username === 'P2' })
+		expect(p2[0]?.score).toBe(100) // unchanged
+		expect(users.rowCount).toBe(2)
+	})
+
+	it('handles a batch of mixed inserts and updates in one call', () => {
+		users.insert([{ id: -1, role: null, username: 'A', score: 1 }, { id: -1, role: null, username: 'B', score: 2 }])
+
+		const results = users.insert(
+			[
+				{ id: -1, role: null, username: 'A', score: 99 }, // update
+				{ id: -1, role: null, username: 'B', score: 88 }, // update
+				{ id: -1, role: null, username: 'C', score: 77 }, // insert
+			],
+			'username'
+		)
+
+		expect(results.length).toBe(3)
+		expect(users.rowCount).toBe(3)
+
+		const all = users.query({ orderBy: 'username', orderDirection: 'ASC' })
+		expect(all[0]?.score).toBe(99)
+		expect(all[1]?.score).toBe(88)
+		expect(all[2]?.score).toBe(77)
+	})
+
+	it('onUpdateMap transforms the payload before it is applied', () => {
+		users.insert({ id: -1, role: null, username: 'Alice', score: 10 })
+
+		const results = users.insert(
+			{ id: -1, role: null, username: 'Alice', score: 0 },
+			'username',
+			undefined,
+			(payload, old) => ({ ...payload, score: (old.score as number) + 5 })
+		)
+
+		expect(results[0]?.score).toBe(15) // 10 + 5
+	})
+})
+
+// ---------------------------------------------------------------------------
+// 5. Query — filtering & projection
+// ---------------------------------------------------------------------------
+
+describe('5. Query — filtering & projection', () => {
+	let users: ReturnType<typeof makeUsers>
 
 	beforeEach(() => {
-		// 3. Pass the types into the class constructors as well
-		usersTable = new SQLTable<UserSchema>('users', userColumns);
-		postsTable = new SQLTable<PostSchema>('posts', postColumns);
+		users = makeUsers()
+		users.insert([
+			{ id: -1, username: 'Alice',   role: 'Admin', score: 100 },
+			{ id: -1, username: 'Bob',     role: 'User',  score: 50  },
+			{ id: -1, username: 'Charlie', role: 'User',  score: 50  },
+			{ id: -1, username: 'NullBot', role: null,    score: null },
+		])
 	})
 
-	describe('1. Introspection & Schema', () => {
-		it('should correctly report table names and row counts', () => {
-			expect(usersTable.rowCount).toBe(0)
-			expect(usersTable.schema).toEqual({
-				id: { type: 'Number', autoIncrement: true },
-				username: { type: 'String' },
-				role: { type: 'String' },
-				score: { type: 'Number' }
-			})
-		})
+	it('returns all rows when called with no options', () => {
+		expect(users.query().length).toBe(4)
 	})
 
-	describe('2. Insert & Auto-Increment Edge Cases', () => {
-		it('should auto-generate IDs if omitted, and handle bulk inserts', () => {
-			const results = usersTable.insert([
-				{ username: 'Alice', role: 'Admin' },
-				{ username: 'Bob', role: 'User' }
-			])
-			expect(results[0]?.id).toBe(1)
-			expect(results[1]?.id).toBe(2)
-			expect(usersTable.rowCount).toBe(2)
-		})
-
-		it('should accept a manual ID and bump the auto-increment tracker correctly', () => {
-			// Edge Case: User manually forces an ID of 100
-			usersTable.insert({ id: 100, username: 'Charlie' })
-
-			// The next automatic insert should be 101, NOT 1
-			const nextResult = usersTable.insert({ username: 'Dave' })
-			expect(nextResult[0]?.id).toBe(101)
-		})
-
-		it('should safely handle inserting explicit nulls', () => {
-			const result = usersTable.insert({ username: 'Eve', role: null, score: null })
-			expect(result[0]?.role).toBeNull()
-			expect(result[0]?.score).toBeNull()
-		})
-
-		it('should perform an UPSERT when a conflictKey is provided and matches an existing row', () => {
-			usersTable.insert({ username: 'UniqueUser', role: 'User', score: 100 })
-
-			const results = usersTable.insert(
-				{ username: 'UniqueUser', role: 'Admin', score: 999 },
-				'username'
-			)
-
-			expect(results.length).toBe(1)
-			expect(results[0]?.role).toBe('Admin')
-			expect(results[0]?.score).toBe(999)
-
-			const allUniqueUsers = usersTable.query({ where: r => r.username === 'UniqueUser' })
-			expect(allUniqueUsers.length).toBe(1)
-			expect(usersTable.rowCount).toBe(1)
-		})
-
-		it('should perform a normal insert if conflictKey is provided but no match exists', () => {
-			const results = usersTable.insert(
-				{ username: 'Newcomer', role: 'User', score: 50 },
-				'username'
-			)
-
-			expect(results.length).toBe(1)
-			expect(results[0]?.username).toBe('Newcomer')
-			expect(usersTable.rowCount).toBe(1)
-		})
-
-		it('should handle a batch of mixed inserts and updates efficiently in one go', () => {
-			// Setup initial data
-			usersTable.insert([
-				{ username: 'UserA', role: 'User', score: 10 },
-				{ username: 'UserB', role: 'User', score: 20 }
-			])
-
-			// Batch payload: UserA updates, UserB updates, UserC inserts, UserD inserts
-			const batchPayload = [
-				{ username: 'UserA', score: 99 },
-				{ username: 'UserB', score: 88 },
-				{ username: 'UserC', role: 'Admin', score: 100 },
-				{ username: 'UserD', role: 'User', score: 50 }
-			]
-
-			const results = usersTable.insert(batchPayload, 'username')
-
-			// Should return all 4 hydrated rows (2 updated, 2 inserted)
-			expect(results.length).toBe(4)
-			expect(usersTable.rowCount).toBe(4) // 2 original + 2 new
-
-			const check = usersTable.query({ orderBy: 'username', orderDirection: 'ASC' })
-			expect(check[0]?.username).toBe('UserA')
-			expect(check[0]?.score).toBe(99)  // Updated
-
-			expect(check[1]?.username).toBe('UserB')
-			expect(check[1]?.score).toBe(88)  // Updated
-
-			expect(check[2]?.username).toBe('UserC')
-			expect(check[2]?.score).toBe(100) // Inserted
-
-			expect(check[3]?.username).toBe('UserD')
-			expect(check[3]?.score).toBe(50)  // Inserted
-		})
-
-		it('should respect the onConflict callback to conditionally skip updates', () => {
-			usersTable.insert([
-				{ username: 'Player1', score: 100 },
-				{ username: 'Player2', score: 100 }
-			])
-
-			// Try to update both, but only allow if new score is higher
-			const results = usersTable.insert(
-				[
-					{ username: 'Player1', score: 150 }, // Should update
-					{ username: 'Player2', score: 50 }   // Should be skipped (score is lower)
-				],
-				'username',
-				(payload, oldRow) => (payload.score as number) > (oldRow.score as number)
-			)
-
-			// Player1 updated, Player2 skipped entirely (not inserted as new, not updated)
-			expect(results.length).toBe(1)
-			expect(results[0]?.username).toBe('Player1')
-			expect(results[0]?.score).toBe(150)
-
-			const p2 = usersTable.query({ where: r => r.username === 'Player2' })
-			expect(p2[0]?.score).toBe(100) // Unchanged
-			expect(usersTable.rowCount).toBe(2) // Still just the original 2 rows
-		})
+	it('WHERE filters rows correctly via lazy proxy', () => {
+		const result = users.query({ where: r => (r.score as number) > 60 })
+		expect(result.length).toBe(1)
+		expect(result[0]?.username).toBe('Alice')
 	})
 
-	describe('3. Query & Filtering Edge Cases', () => {
-		beforeEach(() => {
-			usersTable.insert([
-				{ username: 'Alice', role: 'Admin', score: 100 },
-				{ username: 'Bob', role: 'User', score: 50 },
-				{ username: 'Charlie', role: 'User', score: 50 },
-				{ username: 'NullBoy', role: null, score: null }
-			])
-		})
-
-		it('should evaluate ORDER BY across the entire dataset before applying LIMIT', () => {
-            usersTable.insert({ username: 'Dave', role: 'User', score: 80 })
-            const top2 = usersTable.query({
-                orderBy: 'score',
-                orderDirection: 'DESC',
-                limit: 2
-            })
-
-            expect(top2.length).toBe(2)
-            expect(top2[0]?.username).toBe('Alice')
-            expect(top2[0]?.score).toBe(100)
-            expect(top2[1]?.username).toBe('Dave')
-            expect(top2[1]?.score).toBe(80)
-        })
-
-		it('should respect limits and DISTINCT clauses', () => {
-			const distinctRoles = usersTable.query({
-				columns: [{ name: 'role', distinct: true }]
-			})
-
-			// Should only return Admin, User, and null (no duplicate 'User')
-			expect(distinctRoles.length).toBe(3)
-		})
-
-		it('should evaluate the Lazy Proxy WHERE clause correctly', () => {
-			const highScorers = usersTable.query({
-				where: (row) => (row.score as number) > 60
-			})
-			expect(highScorers.length).toBe(1)
-			expect(highScorers[0]?.username).toBe('Alice')
-		})
-
-		it('should sort correctly, putting NULLs in their proper place', () => {
-			const sorted = usersTable.query({
-				orderBy: 'score',
-				orderDirection: 'ASC',
-				columns: [{ name: 'username' }, { name: 'score' }]
-			})
-
-			// ASC sorting should put NULL first, then 50, then 100
-			expect(sorted[0]?.score).toBeNull()
-			expect(sorted[1]?.score).toBe(50)
-			expect(sorted[sorted.length - 1]?.score).toBe(100)
-		})
+	it('WHERE can match on null', () => {
+		const result = users.query({ where: r => r.role === null })
+		expect(result.length).toBe(1)
+		expect(result[0]?.username).toBe('NullBot')
 	})
 
-	describe('4. Nested-Loop Join Edge Cases', () => {
-		it('should successfully join tables and handle non-matches safely', () => {
-			usersTable.insert({ id: 1, username: 'Alice' })
-			usersTable.insert({ id: 2, username: 'Bob' }) // Bob has no posts
-
-			postsTable.insert({ id: 10, authorId: 1, title: 'Hello World' })
-
-			const joined = usersTable.query({
-				join: [{
-					table: postsTable,
-					on: (user, post) => user.id === post.authorId
-				}]
-			})
-
-			// Only Alice should be returned because Bob has no matching posts (Inner Join behavior)
-			expect(joined.length).toBe(1)
-			expect(joined[0]?.username).toBe('Alice')
-			expect(joined[0]?.title).toBe('Hello World')
-		})
+	it('DISTINCT on a column eliminates duplicates, keeping nulls', () => {
+		const result = users.query({ columns: [{ name: 'role', distinct: true }] })
+		// Roles: 'Admin', 'User', 'User', null → deduplicated = 3
+		expect(result.length).toBe(3)
 	})
 
-	describe('5. Update & Bulk Update Edge Cases', () => {
-		beforeEach(() => {
-			usersTable.insert([
-				{ id: 1, username: 'Alice', score: 10 },
-				{ id: 2, username: 'Bob', score: 20 },
-				{ id: 3, username: 'Charlie', score: 30 }
-			])
-		})
-
-		it('should run bulk updates using the shrinking array optimization', () => {
-			const updatedCount = usersTable.update(
-				[
-					{ score: 99 }, // Payload 1: Change Alice's score
-					{ score: 88 }  // Payload 2: Change Bob's score
-				],
-				(payload, row) => {
-					// Match Alice for payload 1, Bob for payload 2
-					if (payload.score === 99) return row.id === 1
-					if (payload.score === 88) return row.id === 2
-					return false
-				}
-			).length
-
-			expect(updatedCount).toBe(2)
-
-			const verify = usersTable.query({ columns: [{ name: 'id'}, {name: 'score'}] })
-			expect(verify.find(u => u.id === 1)?.score).toBe(99)
-			expect(verify.find(u => u.id === 2)?.score).toBe(88)
-			expect(verify.find(u => u.id === 3)?.score).toBe(30) // Charlie untouched
-		})
-
-		it('should safely bump auto-increment tracker if ID is updated', () => {
-			usersTable.update([{ id: 50 }], (payload, row) => row.id === 3)
-
-			// Next insert should be 51
-			const result = usersTable.insert({ username: 'Dave' })
-			expect(result[0]?.id).toBe(51)
-		})
-
-		it('should dynamically transform the update payload using the map function', () => {
-			const updated = usersTable.update(
-				[{ score: 0 }],
-				(_, row) => row.username === 'Alice',
-				(payload, row) => ({
-					...payload,
-					score: (row.score as number) + 15
-				})
-			)
-
-			expect(updated.length).toBe(1)
-			expect(updated[0]?.score).toBe(25)
-
-			const check = usersTable.query({ where: r => r.username === 'Alice' })
-			expect(check[0]?.score).toBe(25)
-		})
+	it('columns projection omits unrequested fields', () => {
+		const result = users.query({ columns: [{ name: 'username' }] })
+		expect(result[0]).toHaveProperty('username')
+		expect(result[0]).not.toHaveProperty('score')
 	})
 
-	describe('6. Delete Edge Cases', () => {
-		it('should correctly delete rows and respect the limit parameter', () => {
-			usersTable.insert([
-				{ username: 'Clone' },
-				{ username: 'Clone' },
-				{ username: 'Clone' }
-			])
+	it('lazy proxy supports calling Date methods inside WHERE', () => {
+		const events = makeEvents()
+		events.insert([
+			{ id: -1, name: 'Old', createdAt: new Date('2020-01-01') },
+			{ id: -1, name: 'New', createdAt: new Date('2026-06-01') },
+		])
 
-			// Edge Case: Limit the delete to only 2 rows, even though 3 match
-			const deletedCount = usersTable.delete({
-				where: (row) => row.username === 'Clone',
-				limit: 2
-			}).length
-
-			expect(deletedCount).toBe(2)
-			expect(usersTable.rowCount).toBe(1) // One clone survives
+		const result = events.query({
+			where: r => (r.createdAt as Date).getFullYear() === 2026,
 		})
+		expect(result.length).toBe(1)
+		expect(result[0]?.name).toBe('New')
 	})
 
-	describe('7. Advanced Edge Cases & Falsy Boundaries', () => {
-		it('should handle 1-to-Many JOINS correctly (Cartesian Expansion)', () => {
-			usersTable.insert({ id: 1, username: 'Author' })
+	it('distinguishes 0, empty string, and null correctly', () => {
+		users.insert([
+			{ id: -1, username: '',   score: 0, role: null    },
+			{ id: -1, username: null, score: null, role: null },
+		])
 
-			// One user, THREE posts
-			postsTable.insert([
-				{ id: 10, authorId: 1, title: 'Post A' },
-				{ id: 11, authorId: 1, title: 'Post B' },
-				{ id: 12, authorId: 1, title: 'Post C' }
-			])
+		expect(users.query({ where: r => r.score === 0     }).length).toBe(1)
+		expect(users.query({ where: r => r.username === '' }).length).toBe(1)
+		// Two rows with null score: NullBot + the new null row
+		expect(users.query({ where: r => r.score === null  }).length).toBe(2)
+	})
+})
 
-			const joined = usersTable.query({
-				join: [{
-					table: postsTable,
-					on: (user, post) => user.id === post.authorId
-				}]
-			})
+// ---------------------------------------------------------------------------
+// 6. Query — sorting
+// ---------------------------------------------------------------------------
 
-			// The engine should duplicate the user data for each matched post
-			expect(joined.length).toBe(3)
-			expect(joined[0]?.title).toBe('Post A')
-			expect(joined[2]?.title).toBe('Post C')
-			expect(joined[2]?.username).toBe('Author')
-		})
+describe('6. Query — sorting', () => {
+	let users: ReturnType<typeof makeUsers>
 
-		it('should execute complex Date methods inside the Lazy Proxy', () => {
-			const eventColumns = [
-				{ name: 'id', type: DataTypes.Number, autoIncrement: true },
-				{ name: 'eventName', type: DataTypes.String },
-				{ name: 'createdAt', type: DataTypes.Datetime }
-			] as const
-			const eventsTable = new SQLTable('events', eventColumns)
-			eventsTable.insert([
-				{ eventName: 'Old Event', createdAt: new Date('2020-05-15') },
-				{ eventName: 'New Event', createdAt: new Date('2026-01-01') }
-			])
-
-			// Test if the Proxy safely constructs the Date object on the fly
-			const results = eventsTable.query({
-				where: (row) => (row.createdAt as Date).getFullYear() === 2026
-			})
-
-			expect(results.length).toBe(1)
-			expect(results[0]?.eventName).toBe('New Event')
-		})
-
-		it('should distinguish between 0, empty string "", and null', () => {
-			usersTable.insert([
-				{ username: '', score: 0 },         // Falsy but valid values
-				{ username: null, score: null }     // Actual nulls
-			])
-
-			const zeroScore = usersTable.query({ where: (row) => row.score === 0 })
-			const emptyName = usersTable.query({ where: (row) => row.username === '' })
-			const nullScore = usersTable.query({ where: (row) => row.score === null })
-
-			expect(zeroScore.length).toBe(1)
-			expect(zeroScore[0]?.username).toBe('') // Empty string is preserved
-
-			expect(emptyName.length).toBe(1)
-			expect(emptyName[0]?.score).toBe(0) // Zero is preserved
-
-			expect(nullScore.length).toBe(1)
-			expect(nullScore[0]?.username).toBeNull()
-		})
-
-		it('should not throw errors when updating a string to the exact same string', () => {
-			usersTable.insert({ id: 99, username: 'StableString' })
-
-			// Update the string to what it already is
-			// This tests the `if (oldString !== newValue)` optimization block
-			const updated = usersTable.update(
-				[{ username: 'StableString' }],
-				(payload, row) => row.id === 99
-			)
-			expect(updated.length).toBe(1)
-			const check = usersTable.query({ where: r => r.id === 99 })
-			expect(check[0]?.username).toBe('StableString')
-		})
+	beforeEach(() => {
+		users = makeUsers()
+		users.insert([
+			{ id: -1, username: 'Charlie', score: 30, role: null   },
+			{ id: -1, username: 'Alice',   score: 100, role: null  },
+			{ id: -1, username: 'Bob',     score: 50, role: null   },
+			{ id: -1, username: 'NullBot', score: null, role: null },
+		])
 	})
 
-	describe('8. Limit & Offset Pagination Edge Cases', () => {
-		beforeEach(() => {
-			// Ensure a clean slate of ordered data for predictable pagination testing
-			usersTable.insert([
-				{ username: 'User1', score: 10 }, // Index 0
-				{ username: 'User2', score: 20 }, // Index 1
-				{ username: 'User3', score: 30 }, // Index 2
-				{ username: 'User4', score: 40 }, // Index 3
-				{ username: 'User5', score: 50 }  // Index 4
-			])
+	it('ORDER BY number ASC — nulls sort first', () => {
+		const result = users.query({ orderBy: 'score', orderDirection: 'ASC' })
+		expect(result[0]?.score).toBeNull()
+		expect(result[1]?.score).toBe(30)
+		expect(result[result.length - 1]?.score).toBe(100)
+	})
+
+	it('ORDER BY number DESC — nulls sort last', () => {
+		const result = users.query({ orderBy: 'score', orderDirection: 'DESC' })
+		expect(result[0]?.score).toBe(100)
+		expect(result[result.length - 1]?.score).toBeNull()
+	})
+
+	it('ORDER BY string ASC uses locale order', () => {
+		const result = users.query({ orderBy: 'username', orderDirection: 'ASC' })
+		expect(result[0]?.username).toBe('Alice')
+		expect(result[1]?.username).toBe('Bob')
+	})
+
+	it('ORDER BY is applied across the full dataset before LIMIT is cut', () => {
+		users.insert({ username: 'Dave', score: 80, id: -1, role: null })
+		const top2 = users.query({ orderBy: 'score', orderDirection: 'DESC', limit: 2 })
+		expect(top2.length).toBe(2)
+		expect(top2[0]?.username).toBe('Alice') // score 100
+		expect(top2[1]?.username).toBe('Dave')  // score 80
+	})
+
+	it('ORDER BY Date DESC', () => {
+		const events = makeEvents()
+		events.insert([
+			{ id: -1, name: 'Old', createdAt: new Date('2020-01-01') },
+			{ id: -1, name: 'New', createdAt: new Date('2026-01-01') },
+			{ id: -1, name: 'Mid', createdAt: new Date('2023-06-01') },
+		])
+		const result = events.query({ orderBy: 'createdAt', orderDirection: 'DESC' })
+		expect(result[0]?.name).toBe('Old')
+		expect(result[result.length - 1]?.name).toBe('New')
+	})
+})
+
+// ---------------------------------------------------------------------------
+// 7. Query — limit & offset
+// ---------------------------------------------------------------------------
+
+describe('7. Query — limit & offset', () => {
+	let users: ReturnType<typeof makeUsers>
+
+	beforeEach(() => {
+		users = makeUsers()
+		users.insert([
+			{ id: -1, username: 'User1', score: 10, role: null },
+			{ id: -1, username: 'User2', score: 20, role: null },
+			{ id: -1, username: 'User3', score: 30, role: null },
+			{ id: -1, username: 'User4', score: 40, role: null },
+			{ id: -1, username: 'User5', score: 50, role: null },
+		])
+	})
+
+	it('LIMIT caps the number of returned rows', () => {
+		expect(users.query({ limit: 2 }).length).toBe(2)
+	})
+
+	it('OFFSET skips rows from the beginning', () => {
+		const result = users.query({ offset: 2 })
+		expect(result.length).toBe(3)
+		expect(result[0]?.username).toBe('User3')
+		expect(result[2]?.username).toBe('User5')
+	})
+
+	it('LIMIT + OFFSET returns the correct window', () => {
+		const result = users.query({ offset: 1, limit: 2 })
+		expect(result.length).toBe(2)
+		expect(result[0]?.username).toBe('User2')
+		expect(result[1]?.username).toBe('User3')
+	})
+
+	it('OFFSET is applied after ORDER BY', () => {
+		// DESC: User5 User4 User3 User2 User1 — offset 2, limit 2 → User3, User2
+		const result = users.query({
+			orderBy: 'score',
+			orderDirection: 'DESC',
+			offset: 2,
+			limit: 2,
+		})
+		expect(result.length).toBe(2)
+		expect(result[0]?.username).toBe('User3')
+		expect(result[1]?.username).toBe('User2')
+	})
+
+	it('WHERE is evaluated before OFFSET', () => {
+		// scores > 15 → User2 User3 User4 User5, offset 1 limit 2 → User3 User4
+		const result = users.query({
+			where: r => (r.score as number) > 15,
+			offset: 1,
+			limit: 2,
+		})
+		expect(result.length).toBe(2)
+		expect(result[0]?.username).toBe('User3')
+		expect(result[1]?.username).toBe('User4')
+	})
+
+	it('returns empty array when OFFSET exceeds dataset size', () => {
+		expect(users.query({ offset: 100 }).length).toBe(0)
+	})
+})
+
+// ---------------------------------------------------------------------------
+// 8. Query — JOIN
+// ---------------------------------------------------------------------------
+
+describe('8. Query — JOIN', () => {
+	let users: ReturnType<typeof makeUsers>
+	let posts: ReturnType<typeof makePosts>
+
+	beforeEach(() => {
+		users = makeUsers()
+		posts = makePosts()
+	})
+
+	it('INNER JOIN excludes outer rows that have no match', () => {
+		users.insert([{ id: 1, username: 'Alice', role: null, score: null }, { id: 2, username: 'Bob', role: null, score: null }])
+		posts.insert({ id: 10, authorId: 1, title: 'Hello World' })
+
+		const result = users.query({
+			join: [{ table: posts, on: (u, p) => u.id === p.authorId }],
 		})
 
-		it('should skip the specified number of rows when only offset is provided', () => {
-			const results = usersTable.query({ offset: 2 })
+		expect(result.length).toBe(1)
+		expect(result[0]?.username).toBe('Alice')
+		expect(result[0]?.title).toBe('Hello World')
+	})
 
-			// Should skip User1 and User2
-			expect(results.length).toBe(3)
-			expect(results[0]?.username).toBe('User3')
-			expect(results[2]?.username).toBe('User5')
+	it('1-to-Many JOIN expands one outer row into multiple combined rows', () => {
+		users.insert({ id: 1, username: 'Author', role: null, score: null })
+		posts.insert([
+			{ id: 10, authorId: 1, title: 'Post A' },
+			{ id: 11, authorId: 1, title: 'Post B' },
+			{ id: 12, authorId: 1, title: 'Post C' },
+		])
+
+		const result = users.query({
+			join: [{ table: posts, on: (u, p) => u.id === p.authorId }],
 		})
 
-		it('should slice a specific chunk when both offset and limit are used', () => {
-			// Skip 1, Take 2 -> Should get User2 and User3
-			const results = usersTable.query({ offset: 1, limit: 2 })
+		expect(result.length).toBe(3)
+		expect(result[0]?.title).toBe('Post A')
+		expect(result[2]?.title).toBe('Post C')
+		expect(result[2]?.username).toBe('Author')
+	})
 
-			expect(results.length).toBe(2)
-			expect(results[0]?.username).toBe('User2')
-			expect(results[1]?.username).toBe('User3')
+	it('JOIN with columns projection includes only selected join-table columns', () => {
+		users.insert({ id: 1, username: 'Alice', role: null, score: null })
+		posts.insert({ id: 10, authorId: 1, title: 'My Post' })
+
+		const result = users.query({
+			join: [{ table: posts, columns: ['title'], on: (u, p) => u.id === p.authorId }],
 		})
 
-		it('should apply offset AFTER sorting the dataset', () => {
-			// Sorted DESC: User5(50), User4(40), User3(30), User2(20), User1(10)
-			// Offset 2, Limit 2 -> Should skip top 2, and grab the next 2 (User3, User2)
-			const results = usersTable.query({
-				orderBy: 'score',
-				orderDirection: 'DESC',
-				offset: 2,
-				limit: 2
-			})
+		expect(result[0]).toHaveProperty('title')
+		expect(result[0]).not.toHaveProperty('authorId')
+	})
+})
 
-			expect(results.length).toBe(2)
-			expect(results[0]?.username).toBe('User3') // Score 30
-			expect(results[1]?.username).toBe('User2') // Score 20
-		})
+// ---------------------------------------------------------------------------
+// 9. Update
+// ---------------------------------------------------------------------------
 
-		it('should return an empty array if offset exceeds the available dataset size', () => {
-			const results = usersTable.query({ offset: 100 })
-			expect(results.length).toBe(0)
-		})
+describe('9. Update', () => {
+	let users: ReturnType<typeof makeUsers>
 
-		it('should evaluate the WHERE clause correctly before applying offset', () => {
-			// Filter: scores > 15 -> User2, User3, User4, User5 (Total 4 rows)
-			// Offset 1, Limit 2 -> Should skip User2, and grab User3, User4
-			const results = usersTable.query({
-				where: r => (r.score as number) > 15,
-				offset: 1,
-				limit: 2
-			})
+	beforeEach(() => {
+		users = makeUsers()
+		users.insert([
+			{ id: 1, username: 'Alice',   score: 10, role: null },
+			{ id: 2, username: 'Bob',     score: 20, role: null },
+			{ id: 3, username: 'Charlie', score: 30, role: null },
+		])
+	})
 
-			expect(results.length).toBe(2)
-			expect(results[0]?.username).toBe('User3')
-			expect(results[1]?.username).toBe('User4')
-		})
+	it('updates a single matching row and returns it hydrated', () => {
+		const result = users.update([{ score: 99 }], (_, row) => row.id === 1)
+		expect(result.length).toBe(1)
+		expect(result[0]?.score).toBe(99)
+		expect(users.query({ where: r => r.id === 1 })[0]?.score).toBe(99)
+	})
+
+	it('bulk update: each payload matches one row (shrinking pending queue)', () => {
+		const result = users.update(
+			[{ score: 99 }, { score: 88 }],
+			(payload, row) => {
+				if (payload.score === 99) return row.id === 1
+				if (payload.score === 88) return row.id === 2
+				return false
+			}
+		)
+
+		expect(result.length).toBe(2)
+		// Charlie (id 3) must be untouched
+		expect(users.query({ where: r => r.id === 3 })[0]?.score).toBe(30)
+	})
+
+	it('map function transforms the payload before it is written', () => {
+		const result = users.update(
+			[{ score: 0 }],
+			(_, row) => row.username === 'Alice',
+			(payload, row) => ({ ...payload, score: (row.score as number) + 15 })
+		)
+		expect(result[0]?.score).toBe(25) // 10 + 15
+	})
+
+	it('updating a string to the same value is a no-op (ref count unchanged)', () => {
+		const result = users.update([{ username: 'Alice' }], (_, row) => row.id === 1)
+		expect(result.length).toBe(1)
+		expect(result[0]?.username).toBe('Alice')
+	})
+
+	it('updating a string column to null nullifies it', () => {
+		const result = users.update([{ username: null }], (_, row) => row.id === 1)
+		expect(result[0]?.username).toBeNull()
+		expect(users.query({ where: r => r.id === 1 })[0]?.username).toBeNull()
+	})
+
+	it('bumps auto-increment tracker when id is updated to a higher value', () => {
+		users.update([{ id: 50 }], (_, row) => row.id === 3)
+		const [next] = users.insert({ username: 'Dave', id: -1, role: null, score: null })
+		expect(next?.id).toBe(51)
+	})
+
+	it('returns empty array when no rows match', () => {
+		expect(users.update([{ score: 0 }], (_, row) => row.id === 999).length).toBe(0)
+	})
+})
+
+// ---------------------------------------------------------------------------
+// 10. Delete
+// ---------------------------------------------------------------------------
+
+describe('10. Delete', () => {
+	let users: ReturnType<typeof makeUsers>
+
+	beforeEach(() => {
+		users = makeUsers()
+		users.insert([
+			{ id: -1, username: 'Alice', role: 'Admin', score: 100 },
+			{ id: -1, username: 'Bob',   role: 'User',  score: 50  },
+			{ id: -1, username: 'Clone', role: 'User',  score: 10  },
+			{ id: -1, username: 'Clone', role: 'User',  score: 10  },
+			{ id: -1, username: 'Clone', role: 'User',  score: 10  },
+		])
+	})
+
+	it('deletes all rows when called with no options', () => {
+		expect(users.delete().length).toBe(5)
+		expect(users.rowCount).toBe(0)
+	})
+
+	it('WHERE limits which rows are deleted', () => {
+		users.delete({ where: r => r.username === 'Alice' })
+		expect(users.rowCount).toBe(4)
+		expect(users.query({ where: r => r.username === 'Alice' }).length).toBe(0)
+	})
+
+	it('LIMIT caps how many matching rows are deleted', () => {
+		const deleted = users.delete({ where: r => r.username === 'Clone', limit: 2 })
+		expect(deleted.length).toBe(2)
+		expect(users.rowCount).toBe(3) // Alice + Bob + 1 surviving Clone
+	})
+
+	it('returns correctly hydrated data for deleted rows', () => {
+		const [row] = users.delete({ where: r => r.username === 'Alice' })
+		expect(row?.username).toBe('Alice')
+		expect(row?.role).toBe('Admin')
+		expect(row?.score).toBe(100)
+	})
+
+	it('returns empty array when no rows match the WHERE clause', () => {
+		expect(users.delete({ where: r => r.username === 'Nobody' }).length).toBe(0)
+		expect(users.rowCount).toBe(5)
+	})
+
+	it('returns empty array on an already-empty table', () => {
+		expect(makeUsers().delete()).toEqual([])
+	})
+
+	it('deleted rows are no longer returned by subsequent queries', () => {
+		users.delete({ where: r => r.username === 'Bob' })
+		expect(users.query({ where: r => r.username === 'Bob' }).length).toBe(0)
 	})
 })

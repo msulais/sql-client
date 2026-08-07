@@ -1,143 +1,257 @@
-# 🗄️ sql-client
+# sql-client
 
-A lightweight, in-memory SQL-like database system that run in browser and node js. It features memory optimization through a shared string pool, automatic hydration of data types, and relational table joining capabilities.
+A lightweight, zero-dependency, in-memory SQL-like database for the browser and Node.js. Rows are stored as compact numeric arrays with string interning, lazy hydration via JS Proxies, and typed table definitions.
 
-## ✨ Features
+## Features
 
-* **Zero Dependencies:** Pure TypeScript/JavaScript. No WASM, no binaries, no setup.
-* **Insanely Memory Efficient:** Uses **String Interning** (a shared memory pool) to store duplicate strings as tiny integer pointers.
-* **Raw Arrays:** Rows are stored as contiguous arrays of numbers (e.g., `[1, 42, 1708500000]`).
-* **Garbage-Collection Optimized:** Uses **Late Materialization** via JS Proxies. Your `WHERE` clauses are evaluated against raw memory arrays *before* objects are instantiated, preventing UI-freezing GC pauses on large datasets.
-* **Relational Power:** Supports complex nested-loop `JOIN`s across multiple tables.
-* **Fully Typed:** Built-in generic types for fantastic developer experience and autocomplete.
+- **Zero dependencies** — Pure TypeScript/JavaScript. No WASM, no native binaries, no setup.
+- **Memory efficient** — String interning stores duplicate strings once as numeric IDs in a shared pool.
+- **Raw row storage** — Rows are contiguous arrays of numbers (e.g. `[1, 42, 1708500000]`).
+- **Late materialization** — `WHERE` and `JOIN` callbacks run against lazy Proxies so only accessed columns are hydrated.
+- **Relational queries** — Nested-loop inner joins across multiple tables.
+- **Full CRUD** — `insert`, `update`, `delete`, and `query` with filtering, sorting, pagination, projection, and distinct.
+- **Upsert support** — Conflict-key inserts with optional veto and payload transforms.
+- **Fully typed** — Generic schema inference, nullable columns, and optional insert fields.
 
-## 📝 Usage Example
+## Installation
 
-The following example demonstrates how to define tables, initialize the database, insert records, and query relational data using a join.
-
-```ts
-import { SQLTable, SQLDatabase, DataTypes } from 'sql-client';
-
-// 1. Define your table schemas
-type UserSchema = { id: number; name: string; createdAt: Date };
-type PostSchema = { id: number; authorId: number; title: string };
-
-// 2. Create table instances
-const usersTable = new SQLTable<UserSchema>('users', [
-    { name: 'id', type: DataTypes.Number, autoIncrement: true },
-    { name: 'name', type: DataTypes.String },
-    { name: 'createdAt', type: DataTypes.Datetime }
-]);
-
-const postsTable = new SQLTable<PostSchema>('posts', [
-    { name: 'id', type: DataTypes.Number, autoIncrement: true },
-    { name: 'authorId', type: DataTypes.Number },
-    { name: 'title', type: DataTypes.String }
-]);
-
-// 3. Insert data
-usersTable.insert([
-    { name: 'Alice', createdAt: new Date() },
-    { name: 'Bob', createdAt: new Date() }
-]); // Alice gets id: 1, Bob gets id: 2
-
-postsTable.insert([
-    { authorId: 1, title: 'Introduction to TypeScript' },
-    { authorId: 1, title: 'Advanced Memory Management' },
-    { authorId: 2, title: 'SQL Joins Explained' }
-]);
-
-// 4. Query data with a Join
-// Let's get all posts written by Alice
-const alicePosts = usersTable.query<PostSchema>({
-    where: (user) => user.name === 'Alice',
-    join: [{
-        table: postsTable,
-        on: (user, post) => user.id === post.authorId
-    }]
-});
-
-console.log(alicePosts);
-/* Output will merge the user and post properties:
-[
-  { id: 1, name: 'Alice', createdAt: 2026-02-21T..., authorId: 1, title: 'Introduction to TypeScript' },
-  { id: 2, name: 'Alice', createdAt: 2026-02-21T..., authorId: 1, title: 'Advanced Memory Management' }
-]
-*/
+```bash
+npm install sql-client
 ```
 
-## ⚠️ Nullability and `undefined`
+Or via [JSR](https://jsr.io/@biru/sql-client):
 
-By default, columns in `sql-client` are strictly typed and **cannot be null**. If you want a column to accept `null` values, you must explicitly set `nullable: true` in your column configurations and append `as const` to the array so TypeScript can accurately infer your types.
+```bash
+npx jsr add @biru/sql-client
+```
 
-If you omit a value or set it to `undefined`, the behavior changes depending on the operation:
-
-* `update()` will strictly **ignore** `undefined` values, allowing you to partially update only the fields you need.
-* `insert()` will treat `undefined` (or omitted) values as an **auto-increment trigger** (if configured), or it will set it to `null` (if the column is nullable).
-
-> **Note:** Attempting to insert `null` or `undefined` into a column that is not auto-incrementing and not explicitly flagged as `nullable: true` will cause a TypeScript warning.
+## Quick start
 
 ```ts
 import { SQLTable, DataTypes } from 'sql-client'
 
-type User = {
-    id: number
-    name: string | null
-    age: number
-}
+type User = { id: number; name: string; createdAt: Date }
+type Post = { id: number; authorId: number; title: string }
 
-// 💡 Notice the 'as const' at the end!
-// This is required for TypeScript to enforce your nullable flags.
-const table = new SQLTable<User, any>('users', [
-    { name: 'id'  , type: DataTypes.Number, autoIncrement: true },
-    { name: 'name', type: DataTypes.String, nullable: true }, // Infers: string | null
-    { name: 'age' , type: DataTypes.Number }                  // Infers: number
-] as const)
-
-table.insert([
-    {
-        // [id] omitted -> triggers auto-increment
-        name: undefined, // becomes null
-        age: 22          // required, since age is not nullable
-    },
-    {
-        // [id] omitted -> triggers auto-increment
-        name: null,      // explicitly null
-        age: 30
-    },
-    {
-        id: 10,          // manual ID assignment
-        name: 'Irfan',
-        age: 25
-    }
-])
-
-// QUERY AFTER INSERT:
-// { id:  1, name: null   , age: 22 }
-// { id:  2, name: null   , age: 30 }
-// { id: 10, name: 'Irfan', age: 25 }
-
-table.update([
-    {
-        id: 10,
-        name: 'John'
-        // [age] omitted -> ignored, keeps the previous value (25)
-    },
-    {
-        id: 1,
-        name: undefined, // explicitly undefined -> ignored, keeps previous value (null)
-        age: 23
-    }
-], (newValue, oldValue) => {
-    return newValue.id === oldValue.id
+const users = new SQLTable<User>('users', {
+	id:        { type: DataTypes.Number, autoIncrement: true },
+	name:      { type: DataTypes.String },
+	createdAt: { type: DataTypes.Datetime },
 })
 
-// QUERY AFTER UPDATE:
-// { id:  1, name: null  , age: 23 }
-// { id:  2, name: null  , age: 30 }
+const posts = new SQLTable<Post>('posts', {
+	id:       { type: DataTypes.Number, autoIncrement: true },
+	authorId: { type: DataTypes.Number },
+	title:    { type: DataTypes.String },
+})
+
+users.insert([
+	{ name: 'Alice', createdAt: new Date() },
+	{ name: 'Bob',   createdAt: new Date() },
+])
+
+posts.insert([
+	{ authorId: 1, title: 'Introduction to TypeScript' },
+	{ authorId: 1, title: 'Advanced Memory Management' },
+	{ authorId: 2, title: 'SQL Joins Explained' },
+])
+
+const alicePosts = users.query({
+	where: (user) => user.name === 'Alice',
+	join: [{
+		table: posts,
+		on: (user, post) => user.id === post.authorId,
+	}],
+})
+
+console.log(alicePosts)
+// [
+//   { id: 1, name: 'Alice', createdAt: Date, authorId: 1, title: 'Introduction to TypeScript' },
+//   { id: 1, name: 'Alice', createdAt: Date, authorId: 1, title: 'Advanced Memory Management' },
+// ]
+```
+
+## Defining tables
+
+Column definitions are passed as an object keyed by column name:
+
+```ts
+const table = new SQLTable<MySchema>('my_table', {
+	id:   { type: DataTypes.Number, autoIncrement: true },
+	name: { type: DataTypes.String },
+	when: { type: DataTypes.Datetime },
+})
+```
+
+Supported column types:
+
+| Type | Stored as | Notes |
+|------|-----------|-------|
+| `DataTypes.Number` | `number` | Supports `autoIncrement: true` |
+| `DataTypes.String` | interned string ID | Reference-counted in a shared pool |
+| `DataTypes.Datetime` | Unix timestamp (`number`) | Hydrated as `Date` on read |
+
+Use `nullable: true` to allow `null` values. Append `as const` to the column config so TypeScript infers nullable fields correctly:
+
+```ts
+type Row = { id: number; name: string | null; score: number }
+
+const table = new SQLTable<Row>('rows', {
+	id:    { type: DataTypes.Number, autoIncrement: true },
+	name:  { type: DataTypes.String, nullable: true },
+	score: { type: DataTypes.Number },
+} as const)
+```
+
+## Auto-increment
+
+When a column has `autoIncrement: true`:
+
+- Omit the field, pass `undefined`, or pass `null` (on a nullable column) to assign the next ID.
+- Pass a value **less than or equal to** the current counter (commonly `-1`) as a sentinel to request auto-assignment when TypeScript requires a concrete number.
+
+```ts
+table.insert({ id: -1, name: 'Alice' }) // id → 1
+table.insert({ id: -1, name: 'Bob'   }) // id → 2
+table.insert({ id: 50, name: 'Eve'   }) // id → 50; next auto → 51
+```
+
+## Query
+
+```ts
+table.query({
+	where:          (row) => row.score > 10,
+	orderBy:        'name',
+	orderDirection: 'ASC',       // 'ASC' | 'DESC'
+	limit:          10,
+	offset:         0,
+	columns:        [{ name: 'role', distinct: true }],
+	join: [{
+		table:   otherTable,
+		columns: ['title'],        // optional projection from the joined table
+		on:      (left, right) => left.id === right.authorId,
+	}],
+})
+```
+
+Behavior notes:
+
+- **Filtering** — `where` receives a lazy Proxy; only accessed properties are hydrated.
+- **Sorting** — Applied across the full result set before `limit` / `offset`.
+- **Distinct** — Mark a column with `distinct: true` in `columns`.
+- **Joins** — Inner joins only; unmatched outer rows are excluded. One-to-many joins produce multiple result rows.
+- **Pagination** — `where` runs first, then sorting, then `offset` and `limit`.
+
+## Insert
+
+```ts
+// Single row or array
+table.insert({ name: 'Alice' })
+table.insert([{ name: 'Alice' }, { name: 'Bob' }])
+```
+
+### Upsert
+
+Pass a `conflictKey` to update an existing row instead of inserting a duplicate:
+
+```ts
+table.insert(
+	{ username: 'Alice', score: 99 },
+	'username',                                    // conflict key
+	(payload, old) => payload.score > old.score,   // optional: veto update
+	(payload, old) => ({ ...payload, score: old.score + 5 }), // optional: transform payload
+)
+```
+
+Rows whose conflict key is `undefined` or `null` are always inserted. Batches can mix inserts and updates in one call.
+
+## Update
+
+```ts
+table.update(
+	[{ id: 1, name: 'John' }, { id: 2, score: 50 }],
+	(newValue, oldValue) => newValue.id === oldValue.id,
+	(newValue, oldValue) => ({ ...newValue, score: oldValue.score + 10 }), // optional map
+)
+```
+
+- `undefined` fields in the payload are **ignored** (partial updates).
+- Returns the hydrated rows that were updated.
+
+## Delete
+
+```ts
+table.delete()                                      // delete all rows
+table.delete({ where: (row) => row.score < 0 })     // conditional delete
+table.delete({ where: (row) => row.active === false, limit: 5 })
+```
+
+Deleted string values are released from the shared pool automatically.
+
+## Nullability and `undefined`
+
+By default, columns cannot be `null`. Set `nullable: true` in the column config (with `as const`) to allow it.
+
+| Operation | `undefined` | `null` |
+|-----------|-------------|--------|
+| `insert()` on auto-increment column | Triggers auto-increment | Triggers auto-increment |
+| `insert()` on nullable column | Stored as `null` | Stored as `null` |
+| `insert()` on required column | TypeScript error | TypeScript error |
+| `update()` | Ignored (field unchanged) | Sets column to `null` |
+
+```ts
+type User = { id: number; name: string | null; age: number }
+
+const table = new SQLTable<User>('users', {
+	id:   { type: DataTypes.Number, autoIncrement: true },
+	name: { type: DataTypes.String, nullable: true },
+	age:  { type: DataTypes.Number },
+} as const)
+
+table.insert([
+	{ name: undefined, age: 22 }, // name → null, id → 1
+	{ name: null,      age: 30 }, // name → null, id → 2
+	{ id: 10, name: 'Irfan', age: 25 },
+])
+
+table.update(
+	[{ id: 10, name: 'John' }, { id: 1, name: undefined, age: 23 }],
+	(newValue, oldValue) => newValue.id === oldValue.id,
+)
+
+// After update:
+// { id:  1, name: null,   age: 23 }
+// { id:  2, name: null,   age: 30 }
 // { id: 10, name: 'John', age: 25 }
 ```
 
-## 📄 License
+## Introspection
+
+Each `SQLTable` exposes read-only metadata:
+
+```ts
+table.name      // 'users'
+table.columns   // ['id', 'name', 'createdAt']
+table.rowCount  // 42
+table.schema    // { id: { type: 'Number', autoIncrement: true }, name: { type: 'String' }, ... }
+```
+
+## Exports
+
+```ts
+import {
+	SQLTable,
+	DataTypes,
+	// types
+	type Schema,
+	type ColumnsConfig,
+	type InferRow,
+	type InsertRow,
+	type MergeJoins,
+	type Nullable,
+} from 'sql-client'
+```
+
+## License
 
 MIT License
