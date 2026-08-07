@@ -47,15 +47,12 @@ postsTable.insert([
     { authorId: 2, title: 'SQL Joins Explained' }
 ]);
 
-// 4. Connect table to enable JOIN operation
-usersTable.connect([postsTable])
-
-// 5. Query data with a Join
+// 4. Query data with a Join
 // Let's get all posts written by Alice
 const alicePosts = usersTable.query<PostSchema>({
     where: (user) => user.name === 'Alice',
     join: [{
-        table: 'posts',
+        table: postsTable,
         on: (user, post) => user.id === post.authorId
     }]
 });
@@ -67,95 +64,78 @@ console.log(alicePosts);
   { id: 2, name: 'Alice', createdAt: 2026-02-21T..., authorId: 1, title: 'Advanced Memory Management' }
 ]
 */
-
-// This is not needed. But you can automatically connect all table.
-const db = new SQLDatabase(usersTable, postsTable);
 ```
 
-## ⚠️ `null` vs `undefined`
+## ⚠️ Nullability and `undefined`
 
-Every value in `sql-client` package always nullable. So `null` is always possible. If you set column
-value to `undefined`, it will either *ignored* or set to *`null`* or *auto increment number*.
+By default, columns in `sql-client` are strictly typed and **cannot be null**. If you want a column to accept `null` values, you must explicitly set `nullable: true` in your column configurations and append `as const` to the array so TypeScript can accurately infer your types.
 
-* `update()` will ignore `undefined` value so you can update only what you need.
-* `insert()` will set `undefined` value as `null` or auto-increment number (if set).
+If you omit a value or set it to `undefined`, the behavior changes depending on the operation:
+
+* `update()` will strictly **ignore** `undefined` values, allowing you to partially update only the fields you need.
+* `insert()` will treat `undefined` (or omitted) values as an **auto-increment trigger** (if configured), or it will set it to `null` (if the column is nullable).
+
+> **Note:** Attempting to insert `null` or `undefined` into a column that is not auto-incrementing and not explicitly flagged as `nullable: true` will cause a TypeScript warning.
 
 ```ts
 import { SQLTable, DataTypes } from 'sql-client'
 
 type User = {
     id: number
-    name: string
+    name: string | null
     age: number
 }
 
-const table = new SQLTable<User>('users', [
+// 💡 Notice the 'as const' at the end!
+// This is required for TypeScript to enforce your nullable flags.
+const table = new SQLTable<User, any>('users', [
     { name: 'id'  , type: DataTypes.Number, autoIncrement: true },
-    { name: 'name', type: DataTypes.String },
-    { name: 'age' , type: DataTypes.Number }
-])
+    { name: 'name', type: DataTypes.String, nullable: true }, // Infers: string | null
+    { name: 'age' , type: DataTypes.Number }                  // Infers: number
+] as const)
 
 table.insert([
     {
-        id: null, // auto increment
-        name: undefined // become: null
-        // [age] become null
+        // [id] omitted -> triggers auto-increment
+        name: undefined, // becomes null
+        age: 22          // required, since age is not nullable
     },
     {
-        id: undefined, // auto increment
-        name: null, // keep null
-        age: undefined, // become null
+        // [id] omitted -> triggers auto-increment
+        name: null,      // explicitly null
+        age: 30
     },
     {
-        id: 10,
+        id: 10,          // manual ID assignment
         name: 'Irfan',
-        age: 22
-    },
-    {
-        id: 11,
-        name: 'Ryan',
-        // [age] become null
-    },
-    {
-        id: null, // auto increment
-        name: 'Kevin',
-        age: 50
+        age: 25
     }
 ])
 
 // QUERY AFTER INSERT:
-// { id:  1, name: null   , age: null }
-// { id:  2, name: null   , age: null }
-// { id: 10, name: 'Irfan', age: 22   }
-// { id: 11, name: 'Ryan' , age: null }
-// { id: 12, name: 'Kevin', age: 50   }
+// { id:  1, name: null   , age: 22 }
+// { id:  2, name: null   , age: 30 }
+// { id: 10, name: 'Irfan', age: 25 }
 
 table.update([
     {
         id: 10,
         name: 'John'
-        // [age] ignored
+        // [age] omitted -> ignored, keeps the previous value (25)
     },
     {
-        id: 11,
-        name: undefined, // ignored
-        age: 14
-    },
-    {
-        id: 12,
-        name: null, // not ignored
-        // [age] ignored
+        id: 1,
+        name: undefined, // explicitly undefined -> ignored, keeps previous value (null)
+        age: 23
     }
 ], (newValue, oldValue) => {
-    return oldValue.id !== null && newValue.id === oldValue.id
+    return newValue.id === oldValue.id
 })
 
 // QUERY AFTER UPDATE:
-// { id:  1, name: null  , age: null }
-// { id:  2, name: null  , age: null }
-// { id: 10, name: 'John', age: 22   }
-// { id: 11, name: 'Ryan', age: 14   }
-// { id: 12, name: null  , age: 50   }
+// { id:  1, name: null  , age: 23 }
+// { id:  2, name: null  , age: 30 }
+// { id: 10, name: 'John', age: 25 }
 ```
 
 ## 📄 License

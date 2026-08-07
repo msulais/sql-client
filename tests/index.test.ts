@@ -1,30 +1,46 @@
-import { DataTypes, SQLDatabase, SQLTable } from '../index'
+import { DataTypes, SQLTable } from '../index'
 import { describe, beforeEach, it, expect } from 'vitest'
 
+type UserSchema = {
+	id: number;
+	username: string | null;
+	role: string | null;
+	score: number | null;
+};
+
+type PostSchema = {
+	id: number;
+	authorId: number;
+	title: string;
+};
+
+// 1. Define schemas outside to enable strict typing for the 'let' variables
+const userColumns = [
+	{ name: 'id', type: DataTypes.Number, autoIncrement: true },
+	{ name: 'username', type: DataTypes.String, nullable: true }, // Marked nullable for tests
+	{ name: 'role', type: DataTypes.String, nullable: true },     // Marked nullable for tests
+	{ name: 'score', type: DataTypes.Number, nullable: true }     // Marked nullable for tests
+] as const // <--- 'as const' enforces strict type inference
+
+const postColumns = [
+	{ name: 'id', type: DataTypes.Number, autoIncrement: true },
+	{ name: 'authorId', type: DataTypes.Number },
+	{ name: 'title', type: DataTypes.String }
+] as const
+
 describe('Custom In-Memory SQL Engine', () => {
-	let usersTable: SQLTable
-	let postsTable: SQLTable
-	let db: SQLDatabase
+	// 2. Apply strict types to your variables
+	let usersTable: SQLTable<UserSchema, typeof userColumns>;
+	let postsTable: SQLTable<PostSchema, typeof postColumns>;
+
 	beforeEach(() => {
-		usersTable = new SQLTable('users', [
-			{ name: 'id', type: DataTypes.Number, autoIncrement: true },
-			{ name: 'username', type: DataTypes.String },
-			{ name: 'role', type: DataTypes.String },
-			{ name: 'score', type: DataTypes.Number } // No auto-increase
-		])
-
-		postsTable = new SQLTable('posts', [
-			{ name: 'id', type: DataTypes.Number, autoIncrement: true },
-			{ name: 'authorId', type: DataTypes.Number },
-			{ name: 'title', type: DataTypes.String }
-		])
-
-		db = new SQLDatabase('', usersTable, postsTable)
+		// 3. Pass the types into the class constructors as well
+		usersTable = new SQLTable<UserSchema>('users', userColumns);
+		postsTable = new SQLTable<PostSchema>('posts', postColumns);
 	})
 
 	describe('1. Introspection & Schema', () => {
 		it('should correctly report table names and row counts', () => {
-			expect(db.tableNames).toEqual(['users', 'posts'])
 			expect(usersTable.rowCount).toBe(0)
 			expect(usersTable.schema).toEqual({
 				id: { type: 'Number', autoIncrement: true },
@@ -216,7 +232,7 @@ describe('Custom In-Memory SQL Engine', () => {
 
 			const joined = usersTable.query({
 				join: [{
-					table: 'posts',
+					table: postsTable,
 					on: (user, post) => user.id === post.authorId
 				}]
 			})
@@ -317,7 +333,7 @@ describe('Custom In-Memory SQL Engine', () => {
 
 			const joined = usersTable.query({
 				join: [{
-					table: 'posts',
+					table: postsTable,
 					on: (user, post) => user.id === post.authorId
 				}]
 			})
@@ -330,13 +346,12 @@ describe('Custom In-Memory SQL Engine', () => {
 		})
 
 		it('should execute complex Date methods inside the Lazy Proxy', () => {
-			const eventsTable = new SQLTable('events', [
+			const eventColumns = [
 				{ name: 'id', type: DataTypes.Number, autoIncrement: true },
 				{ name: 'eventName', type: DataTypes.String },
 				{ name: 'createdAt', type: DataTypes.Datetime }
-			])
-			db = new SQLDatabase('', eventsTable) // Mount to DB
-
+			] as const
+			const eventsTable = new SQLTable('events', eventColumns)
 			eventsTable.insert([
 				{ eventName: 'Old Event', createdAt: new Date('2020-05-15') },
 				{ eventName: 'New Event', createdAt: new Date('2026-01-01') }

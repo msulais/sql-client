@@ -25,10 +25,20 @@ export type TableName = string
 export type Schema = Record<ColumnName, number | string | Date | null>
 
 /** Column properties */
-export type ColumnProperties<T extends Record<ColumnName, any>> = ({ name: keyof T } & (
+export type ColumnProperties<T extends Record<ColumnName, any>> = ({ name: keyof T; nullable?: boolean } & (
 	{ type: DataTypes.String | DataTypes.Datetime }
 	| { type: DataTypes.Number, autoIncrement?: boolean }
 ))
+
+/**
+ * Dynamically infers the row type.
+ * If a column has { nullable: true }, it becomes `T[K] | null`. Otherwise, it is strictly `T[K]`.
+ */
+export type InferRow<T, C extends readonly ColumnProperties<any>[]> = {
+	[K in keyof T]: K extends Extract<C[number], { nullable: true }>['name']
+		? T[K] | null
+		: NonNullable<T[K]>
+}
 
 /** Join array */
 export type MergeJoins<T, J extends any[]> = (J extends [infer First, ...infer Rest]
@@ -78,10 +88,13 @@ function deleteString(stringId: StringId): void {
 /**
  * Represents an in-memory SQL-like table that stores data efficiently.
  * @template T - The schema type of the table.
+ * @template C - The literal type of the column configurations.
  */
-export class SQLTable<T extends Schema = any> {
+export class SQLTable<
+	T extends Schema = any,
+	C extends readonly ColumnProperties<T>[] = readonly ColumnProperties<T>[]
+> {
 	private _name: TableName
-	private _sharedTables = new Map<SQLTable['name'], SQLTable>()
 	private _columnProperties = new Map<keyof T, ColumnProperties<any>>()
 	private _columnIndexes = new Map<keyof T, ColumnIndex>()
 	private _autoIncrement: number[] = []
@@ -92,7 +105,7 @@ export class SQLTable<T extends Schema = any> {
 	 * @param name - The name of the table.
 	 * @param columns - The column definitions for the table.
 	 */
-	constructor(name: string, columns: ColumnProperties<T>[]) {
+	constructor(name: string, columns: C) {
 		this._name = name
 		for (let i = 0; i < columns.length; i++) {
 			const column = columns[i]
@@ -160,52 +173,34 @@ export class SQLTable<T extends Schema = any> {
 	}
 
 	/**
-	 * Connects other tables to this table to enable JOIN operations.
-	 * @param tables - An array of table instances to connect.
-	 */
-	connect(tables: SQLTable[]): void {
-		for (const table of tables) {
-			const name = table.name
-			if (name === this._name) {
-				continue
-			}
-
-			this._sharedTables.set(name, table)
-		}
-	}
-
-	/**
 	 * Queries the table for data, supporting filtering, joins, sorting, limits, and offsets.
-	 * @template JoinedTables - The resulting type when joining with another table.
+	 * @template JoinTables - The array of SQLTable instances being joined.
+	 * @template JoinedRows - The inferred row types of the joined tables.
 	 * @param [options] - The query configuration options.
-	 * @param [options.limit] - The maximum number of rows to return.
-	 * @param [options.offset] - The number of rows to skip before starting to return results.
-	 * @param [options.where] - A filter function evaluated against each row.
-	 * @param [options.orderBy] - The column name to sort the results by.
-	 * @param [options.orderDirection] - The direction of the sort.
-	 * @param [options.join] Join configurations.
-	 * @param [options.columns] - Specific columns to select and distinct flags.
 	 * @returns An array of hydrated row objects matching the query.
 	 */
 	query<
-		JoinedTables extends Schema[] = [],
-		SelectedCols extends keyof MergeJoins<T, JoinedTables> = keyof MergeJoins<T, JoinedTables>
+		JoinTables extends SQLTable<any, any>[] = [],
+		JoinedRows extends any[] = { [K in keyof JoinTables]: JoinTables[K] extends SQLTable<infer JT, infer JC> ? InferRow<JT, JC> : never },
+		SelectedCols extends keyof MergeJoins<InferRow<T, C>, JoinedRows> = keyof MergeJoins<InferRow<T, C>, JoinedRows>
 	>(options?: {
 		limit?: number
 		offset?: number
-		where?: (row: Nullable<T>) => boolean
-		orderBy?: keyof MergeJoins<T, JoinedTables>
+		where?: (row: InferRow<T, C>) => boolean
+		orderBy?: keyof MergeJoins<InferRow<T, C>, JoinedRows>
 		orderDirection?: 'ASC' | 'DESC'
-		join?: {[K in keyof JoinedTables]: {
-			table: TableName
-			columns?: (keyof JoinedTables[K])[]
-			on: (currentValue: Nullable<T>, joinTableValue: Nullable<JoinedTables[K]>) => boolean
-		}}
+		join?: readonly [...{
+			[K in keyof JoinTables]: JoinTables[K] extends SQLTable<infer JT, infer JC> ? {
+				table: JoinTables[K]
+				columns?: (keyof InferRow<JT, JC>)[]
+				on: (currentValue: InferRow<T, C>, joinTableValue: InferRow<JT, JC>) => boolean
+			} : never
+		}]
 		columns?: {
 			name: keyof T,
 			distinct?: boolean
 		}[]
-	}): Pick<Nullable<MergeJoins<T, JoinedTables>>, SelectedCols>[] {
+	}): Pick<MergeJoins<InferRow<T, C>, JoinedRows>, SelectedCols>[] {
 		const results: any[] = []
 		const limit = options?.limit ?? Infinity
 		const offset = options?.offset ?? 0
@@ -219,8 +214,9 @@ export class SQLTable<T extends Schema = any> {
 			options?.columns?.filter(col => col.distinct).map(col => col.name)
 		)
 		const seenDistinctValues = new Map<keyof T, Set<number>>()
+
 		const hydrate = (
-			targetTable: SQLTable<any>,
+			targetTable: SQLTable<any, any>,
 			rawRow: (number | null)[],
 			columnsToPick: Set<string>
 		) => {
@@ -254,7 +250,7 @@ export class SQLTable<T extends Schema = any> {
 			return hydratedData
 		}
 
-		const createLazyProxy = (targetTable: SQLTable<any>, getRawRow: () => (number | null)[]) => (
+		const createLazyProxy = (targetTable: SQLTable<any, any>, getRawRow: () => (number | null)[]) => (
 			new Proxy({}, {
 				get: (_, propertyName: string) => {
 					const colIdx = targetTable._columnIndexes.get(propertyName)
@@ -282,7 +278,8 @@ export class SQLTable<T extends Schema = any> {
 		)
 
 		let currentRawRow: (number | null)[] = []
-		const lazyRowProxy = createLazyProxy(this, () => currentRawRow) as T
+		const lazyRowProxy = createLazyProxy(this, () => currentRawRow) as InferRow<T, C>
+
 		ROW_LOOP: for (let rowIndex = 0; rowIndex < this._rows.length; rowIndex++) {
 			if (!hasOrderBy && results.length >= maxLimit) {
 				break ROW_LOOP
@@ -324,7 +321,7 @@ export class SQLTable<T extends Schema = any> {
 
 			const baseHydratedRow = hydrate(this, currentRawRow, requestedColumns as Set<string>)
 			if (!options?.join || options.join.length <= 0) {
-				results.push(baseHydratedRow as (T & JoinedTables))
+				results.push(baseHydratedRow)
 				if (!hasOrderBy && results.length >= maxLimit) {
 					break ROW_LOOP
 				}
@@ -335,9 +332,9 @@ export class SQLTable<T extends Schema = any> {
 			// INNER JOIN LOGIC
 			let combinedRows: Record<string, any>[] = [baseHydratedRow]
 			for (const joinConfig of options.join) {
-				const joinedTable = this._sharedTables.get(joinConfig.table)
+				// We no longer need to look up a string! We use the table instance directly.
+				const joinedTable = joinConfig.table as SQLTable<any, any>
 				if (!joinedTable) {
-					console.error(`Table ${joinConfig.table} not found for join.`)
 					continue
 				}
 
@@ -353,7 +350,7 @@ export class SQLTable<T extends Schema = any> {
 					}
 
 					currentJoinRawRow = joinedTable._rows[jRowIndex]!
-					if (!joinConfig.on(lazyRowProxy, lazyJoinProxy)) {
+					if (!joinConfig.on(lazyRowProxy, lazyJoinProxy as any)) {
 						continue
 					}
 
@@ -367,7 +364,7 @@ export class SQLTable<T extends Schema = any> {
 			}
 
 			for (const finalCombinedRow of combinedRows) {
-				results.push(finalCombinedRow as (T & JoinedTables))
+				results.push(finalCombinedRow)
 				if (!hasOrderBy && results.length >= maxLimit) {
 					break ROW_LOOP
 				}
@@ -408,13 +405,15 @@ export class SQLTable<T extends Schema = any> {
 			})
 		}
 
+		const stronglyTypedResults = results as Pick<MergeJoins<InferRow<T, C>, JoinedRows>, SelectedCols>[]
+
 		if (limit === Infinity && offset === 0) {
-			return results
+			return stronglyTypedResults
 		}
 
 		return limit === Infinity
-			? results.slice(offset)
-			: results.slice(offset, offset + limit)
+			? stronglyTypedResults.slice(offset)
+			: stronglyTypedResults.slice(offset, offset + limit)
 	}
 
 	/**
@@ -427,8 +426,8 @@ export class SQLTable<T extends Schema = any> {
 	 */
 	delete(options?: {
 		limit?: number
-		where?: (value: Nullable<T>) => boolean
-	}): Nullable<T>[] {
+		where?: (value: InferRow<T, C>) => boolean
+	}): InferRow<T, C>[] {
 		const maxDeletes = options?.limit ?? Infinity
 		let deletedCount = 0
 		if (this._rows.length === 0) {
@@ -454,10 +453,10 @@ export class SQLTable<T extends Schema = any> {
 				case DataTypes.Number: return rawVal
 				default: return rawVal
 			}
-		}}) as T
+		}}) as InferRow<T, C>
 
 		const keptRows: (number | null)[][] = []
-		const deletedRows: Nullable<T>[] = []
+		const deletedRows: InferRow<T, C>[] = []
 		for (let rowIndex = 0; rowIndex < this._rows.length; rowIndex++) {
 			if (!this._rows[rowIndex]) {
 				continue
@@ -478,25 +477,25 @@ export class SQLTable<T extends Schema = any> {
 				continue
 			}
 
-			const t: Nullable<T> = {} as T
+			const t: InferRow<T, C> = {} as InferRow<T, C>
 			for (const [colName, colIndex] of this._columnIndexes) {
 				const property = this._columnProperties.get(colName)!
 				const rawVal = currentRawRow[colIndex]
-				t[colName] = null
+				t[colName as keyof typeof t] = null as any
 				if (rawVal === null) {
 					continue
 				}
 
 				switch (property.type) {
 				case DataTypes.Number:
-					t[colName] = rawVal as any;
+					t[colName as keyof typeof t] = rawVal as any;
 					break
 				case DataTypes.String:
-					t[colName] = SHARED_STRING.get(rawVal)?.[0] ?? null as any
+					t[colName as keyof typeof t] = SHARED_STRING.get(rawVal)?.[0] ?? null as any
 					deleteString(rawVal as number)
 					break
 				case DataTypes.Datetime:
-					t[colName] = new Date(rawVal as number) as any
+					t[colName as keyof typeof t] = new Date(rawVal as number) as any
 					break
 				}
 			}
@@ -518,10 +517,10 @@ export class SQLTable<T extends Schema = any> {
 	 * @returns The updates items.
 	 */
 	update(
-		values: Nullable<Partial<T>>[],
-		where: (newValue: Nullable<Partial<T>>, oldValue: Nullable<T>) => boolean,
-		map?: (newValue: Nullable<Partial<T>>, oldValue: Nullable<T>) => Nullable<Partial<T>>
-	): Nullable<T>[] {
+		values: Partial<InferRow<T, C>>[],
+		where: (newValue: Partial<InferRow<T, C>>, oldValue: InferRow<T, C>) => boolean,
+		map?: (newValue: Partial<InferRow<T, C>>, oldValue: InferRow<T, C>) => Partial<InferRow<T, C>>
+	): InferRow<T, C>[] {
 		if (this._rows.length === 0 || values.length === 0) {
 			return []
 		}
@@ -546,9 +545,9 @@ export class SQLTable<T extends Schema = any> {
 			case DataTypes.Number: return rawVal
 			default: return rawVal
 			}
-		}}) as T
+		}}) as InferRow<T, C>
 
-		const updatedRows: Nullable<T>[] = []
+		const updatedRows: InferRow<T, C>[] = []
 		ROW_LOOP: for (let rowIndex = 0; rowIndex < this._rows.length; rowIndex++) {
 			if (pendingUpdates.length === 0) {
 				break ROW_LOOP
@@ -630,24 +629,24 @@ export class SQLTable<T extends Schema = any> {
 			}
 
 			if (isUpdated) {
-				const t: Nullable<T> = {} as T
+				const t: InferRow<T, C> = {} as InferRow<T, C>
 				for (const [colName, colIndex] of this._columnIndexes) {
 					const property = this._columnProperties.get(colName)!
 					const rawVal = currentRawRow[colIndex]
-					t[colName as keyof T] = null as any
+					t[colName as keyof typeof t] = null as any
 					if (rawVal === null) {
 						continue
 					}
 
 					switch (property.type) {
 					case DataTypes.Number:
-						t[colName as keyof T] = rawVal as any
+						t[colName as keyof typeof t] = rawVal as any
 						break
 					case DataTypes.String:
-						t[colName as keyof T] = (SHARED_STRING.get(rawVal)?.[0] ?? null) as any
+						t[colName as keyof typeof t] = (SHARED_STRING.get(rawVal)?.[0] ?? null) as any
 						break
 					case DataTypes.Datetime:
-						t[colName as keyof T] = new Date(rawVal as number) as any
+						t[colName as keyof typeof t] = new Date(rawVal as number) as any
 						break
 					}
 				}
@@ -668,13 +667,13 @@ export class SQLTable<T extends Schema = any> {
 	 * @returns An array of the newly inserted or updated hydrated row objects
 	 */
 	insert(
-		values: Nullable<Partial<T>> | Nullable<Partial<T>>[],
+		values: Partial<InferRow<T, C>> | Partial<InferRow<T, C>>[],
 		conflictKey?: keyof T,
-		onConflict?: (newValue: Nullable<Partial<T>>, oldValue: Nullable<T>) => boolean,
-		onUpdateMap?: (newValue: Nullable<Partial<T>>, oldValue: Nullable<T>) => Nullable<Partial<T>>
-	): Nullable<T>[] {
+		onConflict?: (newValue: Partial<InferRow<T, C>>, oldValue: InferRow<T, C>) => boolean,
+		onUpdateMap?: (newValue: Partial<InferRow<T, C>>, oldValue: InferRow<T, C>) => Partial<InferRow<T, C>>
+	): InferRow<T, C>[] {
 		const rowsToInsert = Array.isArray(values) ? values : [values]
-		const insertedRows: Nullable<T>[] = []
+		const insertedRows: InferRow<T, C>[] = []
 		let itemsToInsert = rowsToInsert
 		UPDATE: {
 			if (!conflictKey) {
@@ -682,8 +681,8 @@ export class SQLTable<T extends Schema = any> {
 			}
 
 			const potentialUpdates = rowsToInsert.filter(v =>
-				v[conflictKey] !== undefined
-				&& v[conflictKey] !== null
+				v[conflictKey as keyof typeof v] !== undefined
+				&& v[conflictKey as keyof typeof v] !== null
 			)
 			if (potentialUpdates.length <= 0) {
 				break UPDATE
@@ -691,8 +690,8 @@ export class SQLTable<T extends Schema = any> {
 
 			const matchedConflictValues = new Set<any>()
 			const updatedRows = this.update(potentialUpdates, (payload, oldRow) => {
-				const key_new = payload[conflictKey]
-				const key_old = oldRow[conflictKey]
+				const key_new = payload[conflictKey as keyof typeof payload]
+				const key_old = oldRow[conflictKey as keyof typeof oldRow]
 				if (
 					key_old === null
 					|| (
@@ -711,9 +710,9 @@ export class SQLTable<T extends Schema = any> {
 
 			insertedRows.push(...updatedRows)
 			itemsToInsert = rowsToInsert.filter(v =>
-				v[conflictKey] === undefined
-				|| v[conflictKey] === null
-				|| !matchedConflictValues.has(v[conflictKey])
+				v[conflictKey as keyof typeof v] === undefined
+				|| v[conflictKey as keyof typeof v] === null
+				|| !matchedConflictValues.has(v[conflictKey as keyof typeof v])
 			)
 		}
 
@@ -723,7 +722,7 @@ export class SQLTable<T extends Schema = any> {
 			for (const [colName, colIndex] of this._columnIndexes) {
 				const colNameStr = colName as string
 				const property = this._columnProperties.get(colName)!
-				let incomingValue = inputValue[colName]
+				let incomingValue = inputValue[colName as keyof typeof inputValue]
 				if (incomingValue === undefined || incomingValue === null) {
 					if (
 						property.type === DataTypes.Number
@@ -759,54 +758,9 @@ export class SQLTable<T extends Schema = any> {
 			}
 
 			this._rows.push(rawRow)
-			insertedRows.push(hydratedRow as T)
+			insertedRows.push(hydratedRow as InferRow<T, C>)
 		}
 
 		return insertedRows
-	}
-}
-
-/**
- * Represents a collection of connected SQLTables.
- */
-export class SQLDatabase {
-	private _tables = new Map<SQLTable['name'], SQLTable>()
-	private _name: string
-
-	/**
-	 * Creates a new SQLDatabase instance and links the provided tables together.
-	 * @param tables - The table instances to include in the database.
-	 */
-	constructor(name: string, ...tables: SQLTable[]) {
-		this._name = name
-		for (const table of tables) {
-			this._tables.set(table.name, table)
-			table.connect(tables)
-		}
-	}
-
-	/**
-	 * Get database name
-	 */
-	get name(): string {
-		return this._name
-	}
-
-	/**
-	 * Gets an array of all table names registered in the database.
-	 * @returns {string[]}
-	 */
-	get tableNames(): string[] {
-		return Array.from(this._tables.keys())
-	}
-
-	/**
-	 * Retrieves a table instance by its name.
-	 * @template T - The schema type of the requested table.
-	 * @param name - The name of the table to retrieve.
-	 * @returns The requested table, or undefined if not found.
-	 */
-	getTable<T extends Schema = any>(name: string): SQLTable<T> | undefined {
-		return this._tables.get(name) as SQLTable<T> | undefined
 	}
 }
