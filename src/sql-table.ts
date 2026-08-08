@@ -17,7 +17,7 @@ type RawRow = (number | null)[]
  * @template C - The literal type of the column configurations.
  */
 export class SQLTable<
-	T extends Schema = any,
+	T extends Schema,
 	const C extends ColumnsConfig<T> = ColumnsConfig<T>
 > {
 	private _columnProperties = new Map<keyof T, any>()
@@ -29,7 +29,7 @@ export class SQLTable<
 	 * Creates a new SQLTable instance.
 	 * @param columns - The column definitions for the table.
 	 */
-	constructor(columns: C) {
+	constructor(columns: ColumnsConfig<T>) {
 
 		let i = 0
 		for (const key in columns) {
