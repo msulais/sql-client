@@ -523,7 +523,7 @@ describe('9. Update', () => {
 		expect(users.query({ where: r => r.id === 1 })[0]?.score).toBe(99)
 	})
 
-	it('bulk update: each payload matches one row (shrinking pending queue)', () => {
+	it('bulk update: each payload matches one row', () => {
 		const result = users.update(
 			[{ score: 99 }, { score: 88 }],
 			(payload, row) => {
@@ -536,6 +536,21 @@ describe('9. Update', () => {
 		expect(result.length).toBe(2)
 		// Charlie (id 3) must be untouched
 		expect(users.query({ where: r => r.id === 3 })[0]?.score).toBe(30)
+	})
+
+	it('multiple update payloads targeting the same row apply all modifications sequentially', () => {
+		const result = users.update([
+			{ id: 1, score: 20 }, // first change
+			{ id: 1, username: 'D' }, // second change
+		], (newV, oldV) => newV.id === oldV.id)
+
+		expect(result.length).toBe(1) // Row should only be returned once
+		expect(result[0]?.score).toBe(20)
+		expect(result[0]?.username).toBe('D')
+
+		const queried = users.query({ where: r => r.id === 1 })
+		expect(queried[0]?.score).toBe(20)
+		expect(queried[0]?.username).toBe('D')
 	})
 
 	it('map function transforms the payload before it is written', () => {

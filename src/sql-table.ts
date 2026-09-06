@@ -436,22 +436,20 @@ export class SQLTable<
 	): InferRow<T, C>[] {
 		if (this._rows.length === 0 || values.length === 0) return []
 
-		const pendingUpdates = [...values]
 		let currentRawRow: RawRow = []
 		const lazyRowProxy = this._createLazyProxy(this, () => currentRawRow) as InferRow<T, C>
 
-		const updatedRows: InferRow<T, C>[] = []
+		const updatedRowIndices = new Set<number>()
 
-		for (let rowIndex = 0; rowIndex < this._rows.length; rowIndex++) {
-			if (pendingUpdates.length === 0) break
-			if (!this._rows[rowIndex]) continue
+		for (let vIndex = 0; vIndex < values.length; vIndex++) {
+			const updatePayload = values[vIndex]
+			if (!updatePayload) continue
 
-			currentRawRow = this._rows[rowIndex]!
-			let isUpdated = false
+			for (let rowIndex = 0; rowIndex < this._rows.length; rowIndex++) {
+				if (!this._rows[rowIndex]) continue
 
-			for (let vIndex = 0; vIndex < pendingUpdates.length; vIndex++) {
-				const updatePayload = pendingUpdates[vIndex]
-				if (!updatePayload) continue
+				currentRawRow = this._rows[rowIndex]!
+
 				if (!where(updatePayload, lazyRowProxy)) continue
 
 				const finalPayload = map ? map(updatePayload, lazyRowProxy) : updatePayload
@@ -467,14 +465,15 @@ export class SQLTable<
 					this._setRawValue(currentRawRow, colIdx, props, newValue, oldRawVal)
 				}
 
-				pendingUpdates.splice(vIndex, 1)
-				isUpdated = true
-				break
+				updatedRowIndices.add(rowIndex)
 			}
+		}
 
-			if (isUpdated) {
-				updatedRows.push(this._hydrateRow(this, currentRawRow, new Set(this._columnIndexes.keys() as Iterable<string>)) as InferRow<T, C>)
-			}
+		const updatedRows: InferRow<T, C>[] = []
+		const allColumns = new Set(this._columnIndexes.keys() as Iterable<string>)
+		for (const rowIndex of updatedRowIndices) {
+			currentRawRow = this._rows[rowIndex]!
+			updatedRows.push(this._hydrateRow(this, currentRawRow, allColumns) as InferRow<T, C>)
 		}
 
 		return updatedRows
