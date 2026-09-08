@@ -165,6 +165,26 @@ describe('3. Insert — auto-increment', () => {
 		const [row2] = users.insert({ id: 11, role: null, score: null, username: 'B' })
 		expect(row2?.id).toBe(12)
 	})
+
+	it('resets counter to max existing value', () => {
+		users.insert([
+			{ id: -1, username: 'A', role: null, score: null }, // id 1
+			{ id: -1, username: 'B', role: null, score: null }, // id 2
+			{ id: 10, username: 'C', role: null, score: null }, // id 10
+		])
+		users.delete({ where: r => r.id === 10 })
+		users.resetAutoIncrementCounters()
+		const [row] = users.insert({ id: -1, username: 'D', role: null, score: null })
+		expect(row?.id).toBe(3) // next after 2
+	})
+
+	it('resets counter to 0 if table is empty', () => {
+		users.insert({ id: 100, username: 'A', role: null, score: null })
+		users.delete() // deletes all
+		users.resetAutoIncrementCounters()
+		const [row] = users.insert({ id: -1, username: 'B', role: null, score: null })
+		expect(row?.id).toBe(1)
+	})
 })
 
 // ---------------------------------------------------------------------------

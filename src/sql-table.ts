@@ -598,4 +598,27 @@ export class SQLTable<
 
 		return insertedRows
 	}
+
+	/**
+	 * Resets all auto-increment counters to the highest existing value in the table
+	 * (or 0 if the table is empty or no valid values exist), ensuring they are at
+	 * the lowest possible safe value.
+	 */
+	resetAutoIncrementCounters(): void {
+		for (const [colName, colIdx] of this._columnIndexes) {
+			const props = this._columnProperties.get(colName)!
+			if (props.type === DataTypes.Number && (props as any).autoIncrement) {
+				let maxVal = 0
+				for (let i = 0; i < this._rows.length; i++) {
+					const row = this._rows[i]
+					if (!row) continue
+					const val = row[colIdx]
+					if (typeof val === 'number' && val > maxVal) {
+						maxVal = val
+					}
+				}
+				this._autoIncrementCounters[colIdx] = maxVal
+			}
+		}
+	}
 }

@@ -116,6 +116,14 @@ table.insert({ id: -1, name: 'Bob'   }) // id → 2
 table.insert({ id: 50, name: 'Eve'   }) // id → 50; next auto → 51
 ```
 
+You can reset the auto-increment counters to the highest existing value in the table (or 0 if empty) by calling `table.resetAutoIncrementCounters()`. This guarantees that the next inserted ID is safe and won't conflict with existing rows.
+
+```ts
+table.delete() // Deletes all rows
+table.resetAutoIncrementCounters() // Counters are reset to 0
+table.insert({ name: 'Frank' }) // id → 1
+```
+
 ## Query
 
 ```ts
